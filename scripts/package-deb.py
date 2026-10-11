@@ -2,10 +2,13 @@
 """Assemble amd64 package from pinned Electron and locally built assets."""
 
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
 
+# Package content is public application code, readable by every installed user.
+os.umask(0o022)
 root = Path(__file__).resolve().parents[1]
 version = json.loads((root / "package.json").read_text())["version"]
 subprocess.run(["node", str(root / "node_modules/electron/install.js")], check=True)

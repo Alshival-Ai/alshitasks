@@ -66,3 +66,19 @@ Exact installed 0.1.5 UI passed on X11 and Wayland, including two cached-workspa
 fixtures and selection persistence. The 0.1.4 upgrade fixture remains byte-for-byte
 unchanged after opening it with the installed 0.1.5 service. User service is active.
 Artifact SHA-256: `7a3df6367081e6c221caaf766194d11e716155d719201851809f31e836367b36`.
+
+## Desktop 0.1.6 — integrated header and portal appearance
+
+The app has a frameless window with a draggable application header and embedded
+minimize/maximize/restore/close controls. The application menu is removed. Light,
+Dark and System modes reuse the portal selector, preference behavior and palette.
+Theme choice persists; explicit Light overrides a dark system preference across
+the shell, boards and editors. All styles and scripts ship inside the package.
+
+Build/typecheck and 51 service tests pass. Extended UI checks cover menu removal,
+theme persistence, system preference changes, explicit overrides, draggable versus
+interactive header regions, maximize/restore and existing offline/workspace flows.
+
+Exact installed 0.1.6 passes the extended UI checks on X11 and Wayland. The 0.1.5
+upgrade fixture is unchanged after opening with 0.1.6; the user service stays active.
+Artifact SHA-256: `ef966e6faeeab2b7d125c4af394511f08843faa9b8a8e15d2433078ad4e0e397`.

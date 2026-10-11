@@ -1,5 +1,7 @@
 const {
   app,
+  Menu,
+  nativeTheme,
   BrowserWindow,
   ipcMain,
   dialog,
@@ -211,6 +213,26 @@ handle("tasks:request", (url, method, body) => {
     throw new Error("Request too large");
   return request(url, method, body);
 });
+handle("tasks:window", (action) => {
+  if (!["state", "minimize", "maximize", "close"].includes(action))
+    throw new Error("Invalid window action");
+  if (action === "minimize") win.minimize();
+  if (action === "maximize")
+    win.isMaximized() ? win.unmaximize() : win.maximize();
+  if (action === "close") {
+    win.close();
+    return false;
+  }
+  return win.isMaximized();
+});
+handle("tasks:theme", (preference) => {
+  if (!["light", "dark", "system"].includes(preference))
+    throw new Error("Invalid theme");
+  nativeTheme.themeSource = preference;
+  win.setBackgroundColor(
+    nativeTheme.shouldUseDarkColors ? "#000000" : "#f6f4ef",
+  );
+});
 handle("tasks:connect", async () => {
   const result = await request("/v1/portal/connect", "POST", {});
   const url = new URL(result.url);
@@ -339,7 +361,10 @@ app
       callback({ cancel: !details.url.startsWith("alshitasks://app/") }),
     );
     await serviceStart();
+    Menu.setApplicationMenu(null);
     win = new BrowserWindow({
+      frame: false,
+      show: false,
       width: 1380,
       height: 900,
       minWidth: 760,
@@ -356,6 +381,11 @@ app
         allowRunningInsecureContent: false,
       },
     });
+    win.once("ready-to-show", () => win.show());
+    for (const event of ["maximize", "unmaximize"])
+      win.on(event, () =>
+        win.webContents.send("tasks:window-state", win.isMaximized()),
+      );
     win.webContents.setWindowOpenHandler(({ url }) => {
       if (/^https?:/.test(url)) void shell.openExternal(url);
       return { action: "deny" };

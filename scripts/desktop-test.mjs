@@ -25,6 +25,79 @@ try {
     await dialog.accept();
   });
   page.on("pageerror", (e) => errors.push(e.message));
+  assert.equal(
+    await app.evaluate(({ Menu }) => Menu.getApplicationMenu()),
+    null,
+  );
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await page.waitForFunction(
+    () => document.documentElement.dataset.theme === "dark",
+  );
+  assert.equal(
+    await page
+      .locator("body")
+      .evaluate((el) => getComputedStyle(el).backgroundColor),
+    "rgb(0, 0, 0)",
+  );
+  await page.reload();
+  await page.getByRole("radio", { name: "Dark", exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByRole("radio", { name: "Dark", exact: true })
+      .getAttribute("aria-checked"),
+    "true",
+  );
+  await page.screenshot({ path: "/tmp/alshitasks-chrome-dark.png" });
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
+  assert.equal(
+    await page
+      .locator("body")
+      .evaluate((el) => getComputedStyle(el).backgroundColor),
+    "rgb(246, 244, 239)",
+  );
+  await page.screenshot({ path: "/tmp/alshitasks-chrome-light.png" });
+  await page.getByRole("radio", { name: "System", exact: true }).click();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForFunction(
+    () => document.documentElement.dataset.theme === "dark",
+  );
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
+  assert.equal(
+    await page
+      .locator(".projects-app")
+      .evaluate((el) =>
+        getComputedStyle(el).getPropertyValue("--bright").trim(),
+      ),
+    "#fffef9",
+  );
+  assert.equal(
+    await page
+      .locator(".app-header")
+      .evaluate((el) =>
+        getComputedStyle(el).getPropertyValue("-webkit-app-region"),
+      ),
+    "drag",
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Close window", exact: true })
+      .evaluate((el) =>
+        getComputedStyle(el).getPropertyValue("-webkit-app-region"),
+      ),
+    "no-drag",
+  );
+  await page
+    .getByRole("button", { name: "Maximize window", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Restore window", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Restore window", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Maximize window", exact: true })
+    .waitFor();
   await page.getByRole("button", { name: "New task +", exact: true }).click();
   await page
     .getByLabel("Title", { exact: true })

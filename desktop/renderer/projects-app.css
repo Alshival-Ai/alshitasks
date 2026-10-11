@@ -329,6 +329,7 @@
   }
 }
 :root[data-theme="light"] .projects-app {
+  --bright: #fffef9;
   --paper: #f6f4ef;
   --ink: #0b0c11;
   --muted: #62636b;
@@ -337,6 +338,7 @@
   color-scheme: light;
 }
 :root[data-theme="dark"] .projects-app {
+  --bright: #000;
   --paper: #000;
   --ink: #f4f2ed;
   --muted: #a5a7b3;

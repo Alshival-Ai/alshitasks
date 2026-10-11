@@ -61,7 +61,7 @@ body {
   margin: 3px;
 }
 .page button:hover {
-  background: #eeece6;
+  background: color-mix(in srgb, var(--app-ink) 8%, var(--app-paper));
 }
 .page form button {
   background: var(--app-ink);
@@ -99,9 +99,9 @@ textarea {
   font: inherit;
   color: inherit;
   padding: 10px;
-  border: 1px solid #cbc7d3;
+  border: 1px solid var(--app-line);
   border-radius: 6px;
-  background: #fff;
+  background: var(--app-card);
   min-width: 0;
 }
 label.check {
@@ -119,13 +119,13 @@ pre {
 table {
   border-collapse: collapse;
   width: 100%;
-  background: #fffef9;
+  background: var(--app-card);
 }
 th,
 td {
   text-align: left;
   padding: 12px;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--app-line);
 }
 .notice {
   padding: 8px 24px;
@@ -196,4 +196,96 @@ td {
   display: block;
   margin-top: 4px;
   color: var(--app-muted);
+}
+
+/* The app header is also the window's drag surface. Interactive areas stay clickable. */
+.alshival-app .app-header {
+  min-height: 56px;
+  padding: 6px 8px 6px 22px;
+  gap: 16px;
+  flex-wrap: nowrap;
+  background: var(--app-paper);
+  border-bottom: 0;
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.app-header :is(a, button, input, select, .workspace-options, .window-chrome) {
+  -webkit-app-region: no-drag;
+}
+.window-chrome {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+.alshival-app .app-header .window-chrome {
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.window-controls {
+  display: flex;
+  gap: 2px;
+}
+.window-controls button {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+.window-controls button:hover {
+  background: color-mix(in srgb, var(--app-ink) 10%, transparent);
+  color: var(--app-ink);
+}
+.window-controls .window-close:hover {
+  background: #c42b35;
+  color: white;
+}
+.window-controls svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+}
+.app-workspace-switcher {
+  min-width: 0;
+}
+.workspace-toggle {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dark-style .notice {
+  background: #24202f;
+  color: var(--app-ink);
+}
+.dark-style .notice.error {
+  background: #3b1b1b;
+  color: #ffb4a6;
+}
+@media (max-width: 1000px) {
+  .app-header .local-label {
+    display: none;
+  }
+  .alshival-app .app-header {
+    gap: 10px;
+    padding-left: 14px;
+  }
+  .workspace-toggle {
+    max-width: 180px;
+  }
+  .alshival-app .app-header .window-chrome {
+    gap: 6px;
+  }
+}
+@media (max-width: 1000px) {
+  .app-header .app-wordmark {
+    display: none;
+  }
 }

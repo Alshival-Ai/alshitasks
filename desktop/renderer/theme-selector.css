@@ -1,0 +1,95 @@
+/* Compact capsules retain 44px-high targets on every shared page header. */
+.theme-control {
+  --theme-track: var(--surface, #eeece6);
+  --theme-border: var(--field-border, #c8c6c1);
+  --theme-icon: var(--muted);
+  --theme-selected: var(--ink);
+  --theme-selected-ink: var(--paper);
+  --theme-focus: var(--accent, #5840ba);
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 0 3px;
+  height: 44px;
+  border: 0;
+}
+.theme-control[hidden] { display: none; }
+.theme-control::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 6px 0;
+  border: 1px solid var(--theme-border);
+  border-radius: 999px;
+  background: var(--theme-track);
+}
+.theme-control [data-theme-choice] {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--theme-icon);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.theme-control [data-theme-choice]::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: 9px 0;
+  border-radius: inherit;
+  background: var(--theme-selected);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+.theme-control [data-theme-choice]:hover { color: var(--theme-selected); }
+.theme-control [data-theme-choice][aria-checked='true'] { color: var(--theme-selected-ink); }
+.theme-control [data-theme-choice][aria-checked='true']::before { opacity: 1; }
+.theme-control [data-theme-choice]:focus-visible { outline: none; }
+.theme-control [data-theme-choice]:focus-visible::after {
+  content: '';
+  position: absolute;
+  inset: 6px 0;
+  border: 2px solid var(--theme-focus);
+  border-radius: inherit;
+}
+.theme-control svg { display: block; width: 16px; height: 16px; pointer-events: none; }
+@media (max-width: 760px) {
+  .theme-control::before { inset: 8px 0; }
+  .theme-control [data-theme-choice] { flex-basis: 28px; width: 28px; }
+  .theme-control [data-theme-choice]::before { inset: 11px 0; }
+  .theme-control svg { width: 14px; height: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-control [data-theme-choice]::before { transition: none; }
+}
+@media (forced-colors: active) {
+  .theme-control::before { border-color: ButtonText; }
+  .theme-control [data-theme-choice][aria-checked='true']::before {
+    background: Highlight;
+    forced-color-adjust: none;
+  }
+  .theme-control [data-theme-choice][aria-checked='true'] { color: HighlightText; forced-color-adjust: none; }
+  .theme-control [data-theme-choice]:focus-visible::after { border-color: Highlight; }
+}
+
+
+/* Research pages use fewer palette tokens than the landing and portal shells. */
+.dark-style .theme-control {
+  --theme-track: #000000;
+  --theme-border: #454545;
+  --theme-icon: #a5a7b3;
+  --theme-selected: #f4f2ed;
+  --theme-selected-ink: #000000;
+  --theme-focus: #c0abff;
+}

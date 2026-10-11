@@ -1,3 +1,5 @@
+import "./theme.js";
+import { WindowChrome } from "./WindowChrome";
 import { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { ProjectsApp } from "./ProjectsApp";
@@ -295,6 +297,7 @@ function App() {
                             : w?.sync || "Waiting to sync";
                   })()}
           </span>
+          <WindowChrome />
         </header>
         {error && (
           <p role="alert" className="notice error">
