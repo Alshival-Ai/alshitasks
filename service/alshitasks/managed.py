@@ -58,6 +58,8 @@ def snapshot():
 
 
 def enabled(store):
+    if not store.paths.managed:
+        return False
     return bool(store.setting('managed_account')) or snapshot() is not None
 
 
@@ -75,7 +77,7 @@ def guarded_transport(store, connection, transport):
         generation = store.setting('authorization_generation', 0)
     def check():
         if store.setting('authorization_generation', 0) != generation:
-            raise Problem('Account changed; work retained locally', 401)
+            raise Problem('Account changed; work retained locally', 409)
         if enabled(store):
             token(store, connection)
     def send(*args, **kwargs):
@@ -89,6 +91,8 @@ def guarded_transport(store, connection, transport):
 
 
 def reconcile(store, transport=None):
+    if not store.paths.managed:
+        return
     from .accounts import activate
     from .portal import remote
     value = snapshot()

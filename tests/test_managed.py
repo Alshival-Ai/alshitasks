@@ -20,6 +20,7 @@ class ManagedTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(Paths(self.temp.name))
+        self.store.paths.managed = True  # Explicit synthetic enrollment fixture.
         self.value = dict(status='ready', version=1, account_id='7', resource=managed.ORIGIN + '/desktop/v1', token='fixture', generation='one', expires_at=time.time()+3600)
         self.mock = patch('alshitasks.managed.snapshot', side_effect=lambda: self.value)
         self.mock.start()
@@ -72,6 +73,12 @@ class ManagedTests(unittest.TestCase):
         self.value = None
         managed.reconcile(self.store)
         self.assertFalse(managed.enabled(self.store))
+
+    def test_explicit_root_never_uses_host_enrollment(self):
+        self.store.paths.managed = False
+        managed.reconcile(self.store)
+        self.assertFalse(managed.enabled(self.store))
+        self.assertIsNone(self.store.setting('active_account'))
 
     def test_worker_stops_after_account_transition(self):
         self.reconcile()

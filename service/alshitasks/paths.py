@@ -17,6 +17,8 @@ def private_dir(path):
 
 class Paths:
     def __init__(self, root=None):
+        # Explicit fixture/standalone roots must never adopt host enrollment.
+        self.managed = root is None
         self.home = Path(root) / "home" if root else Path.home()
         if root:
             self.data = private_dir(Path(root) / "data")

@@ -33,7 +33,7 @@ try {
   const secondary = spawnSync(
     '/usr/lib/alshitasks/electron/electron',
     ['--ozone-platform=' + (process.env.ALSHITASKS_TEST_DISPLAY || 'x11'), process.env.ALSHITASKS_TEST_APP || path.resolve('.')],
-    { env: { ...process.env, ALSHITASKS_TEST_ROOT: root }, timeout: 10000, encoding: 'utf8', stdio: 'pipe' },
+    { env: { ...process.env, ALSHITASKS_TEST_ROOT: root }, timeout: 10000, killSignal: 'SIGKILL', encoding: 'utf8', stdio: 'pipe' },
   );
   assert.equal(secondary.status, 0, secondary.stderr);
   assert.doesNotMatch(secondary.stderr, /ERR_FAILED|Desktop startup failed/);

@@ -15,7 +15,7 @@ try {
   const page = await app.firstWindow();
   await page.getByRole('button', { name: 'New task +', exact: true }).waitFor();
   assert.equal(page.url(), 'alshitasks://app/index.html');
-  const secondary = spawnSync(executablePath, args, { env, encoding: 'utf8', timeout: 10000 });
+  const secondary = spawnSync(executablePath, args, { env, encoding: 'utf8', timeout: 10000, killSignal: 'SIGKILL' });
   assert.equal(secondary.status, 0, secondary.stderr);
   assert.doesNotMatch(secondary.stderr, /ERR_FAILED|Desktop startup failed/);
   assert.equal(app.windows().length, 1);
