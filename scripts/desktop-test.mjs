@@ -346,6 +346,60 @@ try {
   await page
     .getByRole("button", { name: "Revoke Log sender", exact: true })
     .waitFor({ state: "detached" });
+  await page
+    .getByRole("navigation", { name: "Resource content" })
+    .getByRole("button", { name: "Monitoring", exact: true })
+    .click();
+  await page.getByText("Add health check", { exact: true }).click();
+  await page
+    .getByLabel("Check name", { exact: true })
+    .fill("Application heartbeat");
+  await page
+    .getByLabel("Check type", { exact: true })
+    .selectOption("heartbeat");
+  await page.getByRole("button", { name: "Save check", exact: true }).click();
+  await page
+    .getByRole("heading", { name: "Application heartbeat", exact: true })
+    .waitFor();
+  await page.waitForFunction(
+    async () =>
+      (await window.tasks.request("/v1/notifications")).unread_count === 1,
+  );
+  await page.getByRole("button", { name: /Notifications, .* unread/ }).click();
+  const inbox = page.getByRole("dialog", {
+    name: "Notifications",
+    exact: true,
+  });
+  await inbox.getByRole("button", { name: "Refresh", exact: true }).click();
+  await inbox
+    .getByRole("button", {
+      name: "Monitoring unavailable · Offline resource",
+      exact: true,
+    })
+    .waitFor();
+  await page.screenshot({ path: "/tmp/alshitasks-notifications-light.png" });
+  await inbox
+    .getByRole("button", {
+      name: "Monitoring unavailable · Offline resource",
+      exact: true,
+    })
+    .click();
+  await page.waitForFunction(
+    async () =>
+      (await window.tasks.request("/v1/notifications")).unread_count === 0,
+  );
+  await page
+    .getByRole("navigation", { name: "Resource content" })
+    .getByRole("button", { name: "Monitoring", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await page.getByRole("button", { name: "Resume", exact: true }).waitFor();
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await page.screenshot({ path: "/tmp/alshitasks-monitoring-dark.png" });
+  await page
+    .getByRole("navigation", { name: "Resource content" })
+    .getByRole("button", { name: "Logs", exact: true })
+    .click();
   await page.screenshot({ path: "/tmp/alshitasks-local-logs-light.png" });
   await page.getByRole("radio", { name: "Dark", exact: true }).click();
   await page.screenshot({ path: "/tmp/alshitasks-local-logs-dark.png" });

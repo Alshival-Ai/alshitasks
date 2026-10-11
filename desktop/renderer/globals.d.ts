@@ -8,6 +8,8 @@ declare global {
       ) => Promise<boolean>;
       theme: (preference: string) => Promise<void>;
       onWindowState: (callback: (maximized: boolean) => void) => () => void;
+      initialNotification: () => Promise<string | null>;
+      onNotification: (callback: (id: string) => void) => () => void;
       onChanged: (callback: () => void) => () => void;
       connect: () => Promise<any>;
       importAttachment: (item: string, replaces?: string) => Promise<any>;

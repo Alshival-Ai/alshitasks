@@ -6,7 +6,15 @@ import shutil
 import subprocess
 from .store import Problem, uid
 
-SCOPES = {"project:read", "project:write", "logs:read", "logs:write", "monitor:read", "monitor:heartbeat"}
+SCOPES = {
+    "notifications:read",
+    "project:read",
+    "project:write",
+    "logs:read",
+    "logs:write",
+    "monitor:read",
+    "monitor:heartbeat",
+}
 
 
 class Secrets:

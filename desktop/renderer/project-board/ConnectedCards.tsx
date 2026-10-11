@@ -1,3 +1,4 @@
+import { ResourceMonitoring } from "./ResourceMonitoring";
 import { ResourceLogs } from "./ResourceLogs";
 import { LocalSSH } from "./LocalSSH";
 import { Attachments } from "./Attachments";
@@ -647,9 +648,7 @@ export function PaperCard({
       data-kind={item.kind}
       data-color={resource ? "blue" : item.data.color || "yellow"}
       style={{
-        left: resource
-          ? geometry.x
-          : `max(calc(var(--app-space, 0px) + 8px), ${geometry.x}px)`,
+        left: `max(calc(var(--app-space, 0px) + 8px), ${geometry.x}px)`,
         top: geometry.y,
         width: geometry.width,
         height: geometry.height,
@@ -692,28 +691,33 @@ export function PaperCard({
               {item.data.resource?.environment}
             </p>
             <nav aria-label="Resource content">
-              {["overview", "notes", "logs", "activity", "settings"].map(
-                (tab) => (
-                  <button
-                    type="button"
-                    aria-current={section === tab ? "page" : undefined}
-                    key={tab}
-                    onClick={() => {
-                      setSection(tab);
-                      if (tab === "activity")
-                        void run(async () => {
-                          const { projectApi } = await import("./api");
-                          const data = await projectApi<{
-                            events: typeof history;
-                          }>(`/items/${item.id}/history`);
-                          setHistory(data.events);
-                        });
-                    }}
-                  >
-                    {tab[0].toUpperCase() + tab.slice(1)}
-                  </button>
-                ),
-              )}
+              {[
+                "overview",
+                "notes",
+                "monitoring",
+                "logs",
+                "activity",
+                "settings",
+              ].map((tab) => (
+                <button
+                  type="button"
+                  aria-current={section === tab ? "page" : undefined}
+                  key={tab}
+                  onClick={() => {
+                    setSection(tab);
+                    if (tab === "activity")
+                      void run(async () => {
+                        const { projectApi } = await import("./api");
+                        const data = await projectApi<{
+                          events: typeof history;
+                        }>(`/items/${item.id}/history`);
+                        setHistory(data.events);
+                      });
+                  }}
+                >
+                  {tab[0].toUpperCase() + tab.slice(1)}
+                </button>
+              ))}
             </nav>
             {section === "overview" && (
               <div className="connected-overview">
@@ -841,6 +845,9 @@ export function PaperCard({
                 <Relations {...{ item, items, edges, connect, unlink, open }} />
                 <Attachments item={item.id} />
               </>
+            )}
+            {section === "monitoring" && (
+              <ResourceMonitoring key={item.id} item={item} />
             )}
             {section === "logs" && <ResourceLogs key={item.id} item={item} />}
             {section === "activity" && (

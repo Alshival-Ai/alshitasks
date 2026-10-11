@@ -30,7 +30,7 @@ Remote collectors need an operator-managed authenticated reverse proxy or SSH tu
 
 Owner-only Unix socket operations include settings, credential/grant management, attachments, backups, SSH aliases, monitoring configuration, forwarding, and portal connections. No HTTP grant can invoke these.
 
-`alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The extracted 13-tool project contract is in `contracts/project-tools.v1.json`; log and health queries add two read-only tools. Default access is read-only; explicit write grants are stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
+`alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The extracted 13-tool project contract is in `contracts/project-tools.v1.json`; log, health and notification queries add read-only tools. Default access is read-only; explicit write grants are stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
 
 Connected resource logs: `GET /v1/portal/logs?resource_id=LOCAL_UUID` uses the signed-in user’s live permissions and maps the cached resource ID. `GET /v1/portal/monitoring?resource_id=LOCAL_UUID` reads permitted portal health metadata. These are desktop-owner operations and fail offline rather than borrowing a managed principal.
 
@@ -108,3 +108,60 @@ The resource viewer defaults to **On this device**. **Portal** appears only for 
 resources and requires a working portal connection; portal failures never silently
 substitute local results. Local backups include SQLite resource logs and attachments;
 credentials remain outside backups.
+
+### Local monitoring and notifications
+
+Resource → Monitoring manages named local HTTPS, TCP, ICMP, database and heartbeat
+checks. `POST /v1/monitoring/checks` accepts `resource_id`, `name`, `required`,
+`config`, and (for edits) `id` plus `revision`. Owner-only
+`POST /v1/monitoring/actions` accepts `id`, `revision`, and `action`: `run`,
+`pause`, `resume`, `maintenance` (with `minutes`), or `end_maintenance`.
+`GET /v1/monitoring?resource_id=UUID` returns checks, aggregate resource health,
+incidents and transition history; agent readers require `monitor:read`.
+Configurations, credentials and local incidents never enter project sync.
+
+Checks default to 120 seconds. Healthy/unhealthy changes require two consecutive
+fresh observations. Missing heartbeats, unavailable adapters and stale observations
+produce unknown health. Required enabled checks determine resource health; optional
+checks retain their own results. Maintenance suppresses local incident notifications.
+One incident remains open until confirmed recovery, with no repeated failure toast.
+Resuming from a long gap resets confirmation. Probe processes have execution limits,
+and revision/lease fencing rejects results from edited or paused checks.
+
+A resource heartbeat token has only `monitor:heartbeat`. POST `/v1/heartbeat` with
+`{"resource_id":"UUID","check_id":"UUID"}` and its Bearer token. A sender can
+reach the loopback listener through its own SSH tunnel or HTTPS proxy, as for logs.
+Database passwords are referenced from Secret Service, never stored in check JSON.
+ICMP needs iputils-ping; database adapters are optional package recommendations.
+
+`notifications_read` uses the portal tool's query contract: `query`,
+`notification_id`, `filter` (`all`, `unread`, `archived`), `page` (default 1),
+`limit` (default 20, maximum 50). It returns `items` and `next_page`, and **never
+marks anything read**. HTTP agents use GET `/v1/notifications` with a personal
+`notifications:read` grant; resource-scoped grants cannot read the personal inbox.
+The default local read-only MCP also exposes the reader without a portal account.
+Portal results require a successful current permission refresh; offline agent reads
+return local notifications only. The desktop may display its saved portal cache
+with a stale indicator and disabled portal actions.
+
+Owner UI operations: POST `/v1/notifications/actions` with `action` and `id`
+(`read`, `unread`, `archive`, `restore`), or `read_all`. Opening an alert marks it
+read and opens the local resource or its portal destination. POST
+`/v1/notifications/refresh` refreshes the optional portal cache. Owner GET responses
+also include source metadata, `unread_count`, and portal freshness. Settings exposes
+`notification_toasts`; disabling toasts preserves the inbox.
+
+The service persists alerts in the local SQLite database and delivers Linux D-Bus
+toasts even with the window closed, while the user session/service remains running.
+Each delivery is claimed before calling D-Bus: restart never replays it; a crash or
+unavailable notification daemon can lose a toast, but not its inbox entry. A first
+portal import is silent. History expires after 90 days, preserving open incidents.
+Backups retain inbox/history; restoration suppresses old toasts and disables restored
+execution until reconfigured.
+
+Portal notifications use the desktop OAuth audience (`notifications:read` and
+`notifications:write`) and `/desktop/v1/notifications`, not the public MCP quota.
+Existing manually connected users must reconnect to consent to these scopes. Managed
+account credentials gain them when their enrollment refreshes. Portal checks and
+email/SMS remain governed by portal settings. Local alerts never generate email/SMS
+or upload themselves to the portal. Both sources remain explicitly labeled in the UI.

@@ -19,6 +19,22 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def probe(config, secrets=None):
     kind = config["kind"]
     try:
+        if kind == "icmp":
+            import subprocess
+
+            try:
+                result = subprocess.run(
+                    ["ping", "-n", "-c", "1", "-W", str(config.get("timeout", 8)), "--", config["host"]],
+                    capture_output=True,
+                    timeout=config.get("timeout", 8) + 1,
+                )
+                return (
+                    ("healthy", "Host responded")
+                    if result.returncode == 0
+                    else ("failed", "Host did not respond")
+                )
+            except FileNotFoundError:
+                return "missing", "Install iputils-ping for ICMP checks"
         if kind == "heartbeat":
             return (
                 ("healthy", "Heartbeat received")
@@ -30,14 +46,20 @@ def probe(config, secrets=None):
             if url.scheme != "https" or url.username or url.password:
                 raise Problem("HTTPS URL without embedded credentials required")
             request = urllib.request.Request(config["url"], method="HEAD")
-            with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
+            with urllib.request.build_opener(NoRedirect).open(
+                request, timeout=config.get("timeout", 8)
+            ) as response:
                 return (
                     ("healthy", f"HTTP {response.status}")
-                    if response.status < 400
+                    if (
+                        response.status == config["expected_status"]
+                        if config.get("expected_status") is not None
+                        else response.status < 400
+                    )
                     else ("failed", f"HTTP {response.status}")
                 )
         if kind == "tcp":
-            with socket.create_connection((config["host"], config["port"]), timeout=5):
+            with socket.create_connection((config["host"], config["port"]), timeout=config.get("timeout", 5)):
                 return "healthy", "TCP connection accepted"
         password = (secrets or Secrets()).get(config["credential"]) if config.get("credential") else None
         if kind == "postgresql":
@@ -48,7 +70,8 @@ def probe(config, secrets=None):
                 dbname=config.get("database"),
                 user=config.get("username"),
                 password=password,
-                connect_timeout=5,
+                connect_timeout=config.get("timeout", 5),
+                sslmode="verify-full" if config.get("tls", True) else "disable",
             ) as connection:
                 connection.execute("SELECT 1").fetchone()
         elif kind in ("mysql", "mariadb"):
@@ -59,9 +82,10 @@ def probe(config, secrets=None):
                 database=config.get("database"),
                 user=config.get("username"),
                 password=password,
-                connect_timeout=5,
-                read_timeout=5,
-                write_timeout=5,
+                connect_timeout=config.get("timeout", 5),
+                ssl={"check_hostname": True} if config.get("tls", True) else None,
+                read_timeout=config.get("timeout", 5),
+                write_timeout=config.get("timeout", 5),
             )
             try:
                 with c.cursor() as cursor:
@@ -75,8 +99,9 @@ def probe(config, secrets=None):
                 host=config["host"],
                 port=config.get("port", 6379),
                 password=password,
-                socket_connect_timeout=5,
-                socket_timeout=5,
+                ssl=config.get("tls", True),
+                socket_connect_timeout=config.get("timeout", 5),
+                socket_timeout=config.get("timeout", 5),
             ).ping()
         elif kind == "mongodb":
             module = importlib.import_module("pymongo")
@@ -85,8 +110,9 @@ def probe(config, secrets=None):
                 port=config.get("port", 27017),
                 username=config.get("username"),
                 password=password,
-                serverSelectionTimeoutMS=5000,
-                connectTimeoutMS=5000,
+                tls=config.get("tls", True),
+                serverSelectionTimeoutMS=config.get("timeout", 5) * 1000,
+                connectTimeoutMS=config.get("timeout", 5) * 1000,
             )
             try:
                 c.admin.command("ping")
@@ -95,6 +121,12 @@ def probe(config, secrets=None):
         else:
             raise Problem("Unknown monitoring adapter")
         return "healthy", "Database responded"
+    except urllib.error.HTTPError as error:
+        return (
+            ("healthy", f"HTTP {error.code}")
+            if config.get("expected_status") == error.code
+            else ("failed", f"HTTP {error.code}")
+        )
     except ModuleNotFoundError:
         return "missing", "Install the optional database adapter package"
     except Problem:
@@ -164,19 +196,6 @@ def record(store, resource, result, detail):
     )
     if health != old["health"]:
         store.db.execute("INSERT INTO incidents VALUES(?,?,?,?,?)", (uid(), resource, health, now(), detail))
-        import shutil
-        import subprocess
-
-        if shutil.which("notify-send"):
-            try:
-                subprocess.run(
-                    ["notify-send", "--app-name=Alshival.Ai", f"Resource {health}", detail],
-                    timeout=3,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except (OSError, subprocess.TimeoutExpired):
-                pass
 
 
 def queue_forward(store, resource, events):
@@ -208,7 +227,9 @@ def forward_once(store, secrets=None):
             data=row["data"].encode(),
             headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
         )
-        with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
+        with urllib.request.build_opener(NoRedirect).open(
+            request, timeout=8
+        ) as response:
             if not 200 <= response.status < 300:
                 raise ValueError()
         store.db.execute("DELETE FROM forward_queue WHERE id=? AND target=?", (row["id"], row["target"]))

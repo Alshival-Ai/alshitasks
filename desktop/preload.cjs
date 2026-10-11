@@ -11,6 +11,12 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("tasks:window-state", listener);
       return () => ipcRenderer.removeListener("tasks:window-state", listener);
     },
+    initialNotification: () => ipcRenderer.invoke("tasks:notification-initial"),
+    onNotification: (callback) => {
+      const listener = (_event, id) => callback(id);
+      ipcRenderer.on("tasks:notification", listener);
+      return () => ipcRenderer.removeListener("tasks:notification", listener);
+    },
     onChanged: (callback) => {
       const listener = () => callback();
       ipcRenderer.on("tasks:changed", listener);

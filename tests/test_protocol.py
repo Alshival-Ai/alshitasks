@@ -174,6 +174,17 @@ class Protocol(unittest.TestCase):
                         },
                     }
                 )
+                requests.append(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 6,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "notifications_read",
+                            "arguments": {"filter": "unread", "limit": 5},
+                        },
+                    }
+                )
                 p = subprocess.run(
                     [sys.executable, str(script), "--root", d, "mcp"],
                     input="".join(json.dumps(r) + "\n" for r in requests),
@@ -184,12 +195,13 @@ class Protocol(unittest.TestCase):
                 self.assertEqual(p.returncode, 0, p.stderr)
                 results = [json.loads(x) for x in p.stdout.splitlines()]
                 self.assertEqual(results[0]["result"]["serverInfo"]["name"], "alshitasks")
-                self.assertEqual(len(results[1]["result"]["tools"]), 16)
+                self.assertEqual(len(results[1]["result"]["tools"]), 17)
                 self.assertIn("result", results[2])
                 self.assertIn("error", results[3])
                 self.assertEqual(
                     results[4]["result"]["structuredContent"], {"events": [], "next_cursor": None}
                 )
+                self.assertEqual(results[5]["result"]["structuredContent"], {"items": [], "next_page": None})
                 log_tool = next(t for t in results[1]["result"]["tools"] if t["name"] == "logs_query")
                 self.assertIn("cursor", log_tool["inputSchema"]["properties"])
                 self.assertEqual((Path(d) / "runtime/service.sock").stat().st_mode & 0o777, 0o600)

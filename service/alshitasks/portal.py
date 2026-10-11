@@ -164,6 +164,7 @@ class Portal:
 
     def _token(self, c, credential):
         from . import managed
+
         if managed.enabled(self.store):
             return managed.token(self.store, c)
         if c["state"] not in ("connected", "syncing"):
@@ -189,8 +190,9 @@ class Portal:
 
     def connect(self, origin):
         from . import managed
+
         if managed.enabled(self.store):
-            raise Problem('Connected through your Ubuntu account', 409)
+            raise Problem("Connected through your Ubuntu account", 409)
         from .accounts import ORIGIN
 
         if origin != ORIGIN:
@@ -333,7 +335,7 @@ class Portal:
                     "client_id": client["client_id"],
                     "redirect_uri": redirect,
                     "response_type": "code",
-                    "scope": "project:read tasks:write tasks:manage board:write project:write project:comment notes:write resources:read resources:write logs:read offline_access",
+                    "scope": "project:read tasks:write tasks:manage board:write project:write project:comment notes:write resources:read resources:write logs:read notifications:read notifications:write offline_access",
                     "resource": origin + "/desktop/v1",
                     "code_challenge": challenge,
                     "code_challenge_method": "S256",
@@ -391,13 +393,21 @@ class Portal:
                     "/desktop/v1/workspaces/" + c["workspace"] + "/logs?" + urlencode(filters),
                     token,
                 )
-            result = remote(c["origin"], "/desktop/v1/workspaces/" + c["workspace"] + "/monitoring", token)
+            result = remote(
+                c["origin"],
+                "/desktop/v1/workspaces/"
+                + c["workspace"]
+                + "/monitoring?"
+                + urlencode({"resource_id": row["remote_id"]}),
+                token,
+            )
             return {"resources": [r for r in result["resources"] if r["id"] == row["remote_id"]]}
         c = self.connection(body.get("connection") or q.get("connection"))
         if path == "/v1/portal/disconnect" and method == "POST":
             from .managed import enabled
+
             if enabled(self.store):
-                raise Problem('Connected through your Ubuntu account; use Pause to stop syncing', 409)
+                raise Problem("Connected through your Ubuntu account; use Pause to stop syncing", 409)
             self.store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (c["id"],))
             self.store.db.execute(
                 "UPDATE outbox SET state='draft',reason='Disconnected' WHERE connection=? AND state='queued'",
@@ -477,6 +487,7 @@ def acknowledge(store, job, result):
 
 def sync_connection(store, c, transport=remote, token=None):
     from .managed import guarded_transport
+
     transport, check_authorization = guarded_transport(store, c, transport)
     adapter = Portal(store)
     token = token or adapter.token(c)

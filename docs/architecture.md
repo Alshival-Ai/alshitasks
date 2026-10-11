@@ -96,3 +96,13 @@ provider; a failed public OAuth keyring does not activate it. Credentials are ne
 stored in the app database or backup. Removing managed policy requires an
 administrator to stop issuance, revoke its portal enrollment, and explicitly
 clear the app's managed-account setting before interactive OAuth is used again.
+
+Named health checks (`health.py`) use independent SQLite configuration, leases,
+observations, aggregate health, incidents and transitions. Killable subprocess probes
+run at most four at a time outside the database transaction. `notifications.py`
+maintains the personal local inbox and account-partitioned portal cache. A single
+service-owned D-Bus notifier delivers durable claimed alerts; Electron only receives
+notification navigation IDs. `notifications_read` shares the portal's read-only
+schema. Portal cache refresh is serialized per store and revalidates live visibility
+before agent reads. Account changes fence remote responses. The portal desktop API
+only reads/mutates personal notification state; it does not send email or SMS.

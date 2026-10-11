@@ -697,7 +697,7 @@
   font-size: 10px;
 }
 
-.projects-app .connected-paper[data-kind="note"] {
+.projects-app .connected-paper {
   max-width: calc(100vw - var(--app-space, 0px) - 16px);
 }
 .projects-app .connected-paper[data-kind="note"] .connected-note-editor > h3 {

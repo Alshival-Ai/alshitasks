@@ -34,7 +34,9 @@ export function ProjectsApp({
   storageNamespace,
   workspaceId = LOCAL_WORKSPACE,
   navigationGuard,
+  notificationTarget,
 }: {
+  notificationTarget?: { id: string; serial: number };
   storageNamespace?: string;
   workspaceId?: string;
   navigationGuard?: { current: (() => boolean) | null };
@@ -179,6 +181,23 @@ export function ProjectsApp({
     setEvents([]);
     setEditorOpen(true);
   };
+  const handledNotification = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (
+      !loaded ||
+      !notificationTarget ||
+      handledNotification.current === notificationTarget.serial
+    )
+      return;
+    handledNotification.current = notificationTarget.serial;
+    const item = items.find((value) => value.id === notificationTarget.id);
+    if (!item) {
+      setError("This resource is no longer available.");
+      return;
+    }
+    setActiveBoard(item.data.board_id || "");
+    open(item);
+  }, [loaded, items, notificationTarget]);
   const begin = (next: string) => {
     if (!leave()) return;
     dirty.current = false;

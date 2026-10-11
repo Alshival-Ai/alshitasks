@@ -1,6 +1,7 @@
 import "./theme.js";
+import { Notifications } from "./Notifications";
 import { WindowChrome } from "./WindowChrome";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { createRoot } from "react-dom/client";
 import { ProjectsApp } from "./ProjectsApp";
 import type { Item } from "./project-board/types";
@@ -76,6 +77,20 @@ function App() {
     [drafts, setDrafts] = useState<any[]>([]),
     [attachments, setAttachments] = useState<any[]>([]),
     [fileItem, setFileItem] = useState("");
+  const [notificationTarget, setNotificationTarget] = useState<{
+    id: string;
+    serial: number;
+  }>();
+  const openNotificationResource = useCallback(
+    (id: string, targetWorkspace: string) => {
+      if (navigationGuard.current && !navigationGuard.current()) return;
+      selectWorkspace(targetWorkspace);
+      setWorkspace(targetWorkspace);
+      setTab("Projects");
+      setNotificationTarget({ id, serial: Date.now() });
+    },
+    [],
+  );
   const work = async (fn: () => Promise<any>) => {
     setError("");
     try {
@@ -302,6 +317,7 @@ function App() {
                             : w?.sync || "Waiting to sync";
                   })()}
           </span>
+          <Notifications openResource={openNotificationResource} />
           <WindowChrome />
         </header>
         {error && (
@@ -319,6 +335,7 @@ function App() {
             <ProjectsApp
               key={workspace}
               workspaceId={workspace}
+              notificationTarget={notificationTarget}
               navigationGuard={navigationGuard}
               storageNamespace={
                 "alshitasks." +
@@ -331,13 +348,46 @@ function App() {
           {tab === "Settings" && (
             <>
               <h1>Settings</h1>
+              <section>
+                <h2>Notifications</h2>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={settings.notification_toasts !== false}
+                    onChange={(e) =>
+                      void work(() =>
+                        api("/v1/settings", "PATCH", {
+                          notification_toasts: e.target.checked,
+                        }),
+                      )
+                    }
+                  />
+                  Show desktop toast notifications
+                </label>
+                <p>
+                  Your inbox remains available when toasts are disabled. Portal
+                  email and SMS preferences are managed in your Alshival.Ai
+                  account.
+                </p>
+              </section>
               <section aria-labelledby="connections-heading">
                 <h2 id="connections-heading">Alshival.Ai account</h2>
-                {accountInfo.managed && <p>Connected through your Ubuntu account</p>}
+                {accountInfo.managed && (
+                  <p>Connected through your Ubuntu account</p>
+                )}
                 {!accountInfo.account && accountInfo.managed ? (
                   <>
-                    <p>Waiting for your Ubuntu account connection. Your local boards are available.</p>
-                    <button onClick={() => void work(() => api('/v1/portal/retry', 'POST', {}))}>Retry connection</button>
+                    <p>
+                      Waiting for your Ubuntu account connection. Your local
+                      boards are available.
+                    </p>
+                    <button
+                      onClick={() =>
+                        void work(() => api("/v1/portal/retry", "POST", {}))
+                      }
+                    >
+                      Retry connection
+                    </button>
                   </>
                 ) : !accountInfo.account ? (
                   <>
@@ -364,13 +414,15 @@ function App() {
                     >
                       Sync now
                     </button>
-                    {!accountInfo.managed && <button
-                      onClick={() =>
-                        void work(() => api("/v1/portal/signout", "POST", {}))
-                      }
-                    >
-                      Sign out
-                    </button>}
+                    {!accountInfo.managed && (
+                      <button
+                        onClick={() =>
+                          void work(() => api("/v1/portal/signout", "POST", {}))
+                        }
+                      >
+                        Sign out
+                      </button>
+                    )}
                     <p>
                       All authorized workspaces sync automatically. Local boards
                       stay on this computer until you publish them.
@@ -592,6 +644,7 @@ function App() {
                           "project:write",
                           "logs:read",
                           "monitor:read",
+                          "notifications:read",
                         ],
                       });
                       setAgentConfig(JSON.stringify(result.config, null, 2));

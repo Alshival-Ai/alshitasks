@@ -63,6 +63,10 @@ class Store:
         self.db.execute("PRAGMA busy_timeout=5000")
         try:
             self.migrate()
+            from . import health, notifications
+
+            health.migrate(self)
+            notifications.migrate(self)
             from .accounts import adopt_legacy
 
             with self.tx():

@@ -41,7 +41,15 @@ def mcp(paths, grant=None):
     from alshitasks.security import Secrets
 
     token = Secrets().get(grant) if grant else ""
+    from alshitasks.notifications import INPUT
+
     catalog = list(tools().values()) + [
+        {
+            "name": "notifications_read",
+            "description": "Read local and authorized portal alerts. Does not mark alerts read.",
+            "readOnly": True,
+            "inputSchema": INPUT,
+        },
         {
             "name": "logs_query",
             "description": "Query local resource logs without a portal account; supports filters and pagination",
@@ -110,12 +118,17 @@ def mcp(paths, grant=None):
                 name = params["name"]
                 args = params.get("arguments", {})
                 if not grant and (name not in tools() or not tools()[name]["readOnly"]):
-                    if name not in ("logs_query", "monitoring_status"):
+                    if name not in ("logs_query", "monitoring_status", "notifications_read"):
                         raise Problem("Write access requires an explicit Secret Service grant", 403)
-                if name in ("logs_query", "monitoring_status"):
+                if name in ("logs_query", "monitoring_status", "notifications_read"):
                     from urllib.parse import urlencode
 
-                    if set(args) - (
+                    if name == "notifications_read":
+                        from alshitasks.notifications import validate
+
+                        validate(args)
+                        args = dict(args, agent_read="1")
+                    elif set(args) - (
                         {
                             "resource_id",
                             "workspace_id",
@@ -132,7 +145,15 @@ def mcp(paths, grant=None):
                         raise Problem("Invalid query")
                     value = call(
                         paths,
-                        ("/v1/logs" if name == "logs_query" else "/v1/monitoring") + "?" + urlencode(args),
+                        (
+                            "/v1/logs"
+                            if name == "logs_query"
+                            else "/v1/notifications"
+                            if name == "notifications_read"
+                            else "/v1/monitoring"
+                        )
+                        + "?"
+                        + urlencode(args),
                         token=token if grant else None,
                     )
                 else:
@@ -171,8 +192,10 @@ def main():
     p = argparse.ArgumentParser(prog="alshitasks")
     p.add_argument("--root", help=argparse.SUPPRESS)
     commands = p.add_subparsers(dest="command", required=True)
-    for name in ("service", "status", "pause", "resume", "stop", "desktop"):
+    for name in ("service", "status", "pause", "resume", "stop"):
         commands.add_parser(name)
+    c = commands.add_parser("desktop")
+    c.add_argument("--notification")
     c = commands.add_parser("mcp")
     c.add_argument("--grant", help="Secret Service entry ID holding a scoped local token; default read-only")
     c = commands.add_parser("grant")
@@ -202,7 +225,15 @@ def main():
             print(json.dumps(restore(paths, args.path)))
             return
     if args.command == "desktop":
-        os.execv("/usr/lib/alshitasks/electron/electron", ["alshitasks", "/usr/lib/alshitasks"])
+        os.execv(
+            "/usr/lib/alshitasks/electron/electron",
+            ["alshitasks", "/usr/lib/alshitasks"]
+            + (
+                ["--notification", str(__import__("uuid").UUID(args.notification))]
+                if args.notification
+                else []
+            ),
+        )
     if args.command == "grant":
         from alshitasks.security import Secrets
 

@@ -59,6 +59,10 @@ class API:
         return row[0] if row else (self.store.setting("remote_edge:" + ident, {}).get("created_at") or now())
 
     def dispatch(self, path, method="GET", body=None, owner=False, token=""):
+        if path.startswith("/v1/notifications"):
+            from .notifications import request
+
+            return request(self.store, path, method, body or {}, owner, token)
         from .workspaces import scope
 
         q = parse_qs(urlsplit(path).query)
@@ -83,7 +87,7 @@ class API:
                 else ("logs:write" if method == "POST" else "logs:read")
                 if path == "/v1/logs"
                 else "monitor:read"
-                if path == "/v1/monitoring"
+                if path in ("/v1/monitoring", "/v1/monitoring/checks", "/v1/monitoring/actions")
                 else "project:read"
                 if method == "GET"
                 else "project:write"
@@ -213,41 +217,32 @@ class API:
                 monitoring.queue_forward(s, resource, body["events"])
                 return result
         if path == "/v1/monitoring" and method == "GET":
-            return {
-                "monitors": [
-                    dict(r, config=json.loads(r["config"]))
-                    for r in s.db.execute(
-                        "SELECT * FROM monitors WHERE (? IS NULL OR resource_id=?)", (resource, resource)
-                    )
-                ],
-                "incidents": [
-                    dict(r)
-                    for r in s.db.execute(
-                        "SELECT * FROM incidents WHERE (? IS NULL OR resource_id=?) ORDER BY created_at DESC LIMIT 100",
-                        (resource, resource),
-                    )
-                ],
-            }
+            from .health import snapshot
+
+            result = snapshot(s, resource)
+            if not owner:
+                for check in result["checks"]:
+                    check["config"].pop("credential", None)
+                    check.pop("lease", None)
+            return result
         if path == "/v1/heartbeat" and method == "POST":
-            row = s.db.execute("SELECT config FROM monitors WHERE resource_id=?", (resource,)).fetchone()
-            if not row:
-                raise Problem("Heartbeat monitor unavailable", 404)
-            config = json.loads(row["config"])
-            if config["kind"] != "heartbeat":
-                raise Problem("Not a heartbeat monitor")
+            from .health import resource as require_resource
+
+            require_resource(s, resource)
+            ident = body.get("check_id") or resource
+            row = s.db.execute(
+                "SELECT * FROM health_checks WHERE id=? AND resource_id=?", (ident, resource)
+            ).fetchone()
+            if not row or json.loads(row["config"])["kind"] != "heartbeat":
+                raise Problem("Heartbeat check unavailable", 404)
             import time
 
-            config["received_at"] = time.time()
-            s.db.execute("UPDATE monitors SET config=? WHERE resource_id=?", (json.dumps(config), resource))
+            s.db.execute("UPDATE health_checks SET heartbeat_at=?,next_at=0 WHERE id=?", (time.time(), ident))
             return {"received": True}
         # All local execution and credential/configuration endpoints are owner-only.
         if not owner:
             raise Problem("Desktop owner authorization required", 403)
-        if (
-            resource
-            and method != "GET"
-            and path in ("/v1/monitoring", "/v1/ssh", "/v1/ssh/open", "/v1/forwarding")
-        ):
+        if resource and method != "GET" and path in ("/v1/ssh", "/v1/ssh/open", "/v1/forwarding"):
             row = s.db.execute("SELECT connection,remote_id FROM items WHERE id=?", (resource,)).fetchone()
             if row and row["connection"]:
                 from .portal import Portal, remote
@@ -276,14 +271,24 @@ class API:
                         credential,
                     )
 
-        if path == "/v1/monitoring" and method == "POST":
-            return monitoring.configure(s, resource, body["config"])
+        if path in ("/v1/monitoring", "/v1/monitoring/checks") and method == "POST":
+            from . import health
+
+            if path == "/v1/monitoring":
+                old = s.db.execute("SELECT revision FROM health_checks WHERE id=?", (resource,)).fetchone()
+                body = dict(body, id=resource, name="Default check", revision=old[0] if old else None)
+            return health.save(s, body)
+        if path == "/v1/monitoring/actions" and method == "POST":
+            from .health import action
+
+            return action(s, body)
         if path == "/v1/settings":
             if method == "GET":
                 return {
                     "portal_url": team_portal_url(),
                     "local_members": s.setting("local_members", []),
                     "paused": s.setting("paused", False),
+                    "notification_toasts": s.setting("notification_toasts", True),
                     "http_port": s.setting("http_port", None),
                     "retention": s.setting("retention", {"days": 7, "max_bytes": 1024**3}),
                     "usage": self.logs.retain(**s.setting("retention", {"days": 7, "max_bytes": 1024**3})),
@@ -292,7 +297,7 @@ class API:
                     "stopping": self.stopping,
                 }
             if method == "PATCH":
-                if set(body) - {"paused", "retention", "http_port", "local_members"}:
+                if set(body) - {"paused", "retention", "http_port", "local_members", "notification_toasts"}:
                     raise Problem("Unknown setting")
                 if "local_members" in body:
                     members = body["local_members"]
@@ -311,6 +316,8 @@ class API:
                         or len({m["id"] for m in members}) != len(members)
                     ):
                         raise Problem("Supply unique local contacts with names")
+                if "notification_toasts" in body and type(body["notification_toasts"]) is not bool:
+                    raise Problem("Invalid toast preference")
                 if "retention" in body:
                     self.logs.retain(**body["retention"])
                 if "paused" in body and not isinstance(body["paused"], bool):

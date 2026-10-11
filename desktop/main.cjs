@@ -9,7 +9,6 @@ const {
   protocol,
   net,
   session,
-  Notification,
 } = require("electron");
 const http = require("node:http"),
   path = require("node:path"),
@@ -26,9 +25,7 @@ const runtime = testRoot
       "alshitasks",
     );
 const socket = path.join(runtime, "service.sock");
-let win,
-  fallback,
-  alerts = new Set();
+let win, fallback;
 app.setName("Alshival.Ai");
 app.setPath(
   "userData",
@@ -48,7 +45,20 @@ protocol.registerSchemesAsPrivileged([
 ]);
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
-app.on("second-instance", () => {
+function notificationArgument(argv) {
+  const id = argv[argv.indexOf("--notification") + 1];
+  return argv.includes("--notification") && /^[a-f0-9-]{36}$/.test(id ?? "")
+    ? id
+    : null;
+}
+let pendingNotification = notificationArgument(process.argv);
+app.on("second-instance", (_event, argv) => {
+  const id = notificationArgument(argv);
+  if (id) {
+    if (win && !win.webContents.isLoading())
+      win.webContents.send("tasks:notification", id);
+    else pendingNotification = id;
+  }
   win?.show();
   win?.focus();
 });
@@ -200,6 +210,11 @@ const handle = (name, fn) =>
     trusted(event);
     return fn(...args);
   });
+handle("tasks:notification-initial", () => {
+  const id = pendingNotification;
+  pendingNotification = null;
+  return id;
+});
 handle("tasks:request", (url, method, body) => {
   if (
     typeof url !== "string" ||
@@ -476,20 +491,6 @@ app
         checkingRevision = false;
       }
     }, 250).unref();
-    setInterval(async () => {
-      try {
-        const v = await request("/v1/monitoring");
-        for (const i of v.incidents) {
-          if (alerts.has(i.id)) continue;
-          alerts.add(i.id);
-          if (Notification.isSupported())
-            new Notification({
-              title: `Resource ${i.health}`,
-              body: i.detail,
-            }).show();
-        }
-      } catch {}
-    }, 15000).unref();
   })
   .catch((e) => {
     console.error("Desktop startup failed:", e.message);

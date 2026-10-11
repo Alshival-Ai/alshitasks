@@ -177,6 +177,15 @@ def restore(paths, path):
                 db.execute("DELETE FROM forward_queue")
                 db.execute("UPDATE connections SET state='disconnected'")
                 db.execute("DELETE FROM monitors")
+                tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                if "health_checks" in tables:
+                    db.execute("UPDATE health_checks SET enabled=0,lease=NULL,lease_until=0")
+                if "app_notifications" in tables:
+                    db.execute("UPDATE app_notifications SET toast='suppressed'")
+                db.execute(
+                    "UPDATE settings SET value=? WHERE key LIKE 'notification_portal:%'",
+                    (json.dumps({"authorized": False, "stale": True}),),
+                )
                 db.commit()
             db.close()
         for name in (

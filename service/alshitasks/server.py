@@ -68,7 +68,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.connection.settimeout(10)
             body = json.loads(self.rfile.read(length)) if length else {}
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-            if self.path == "/v1/backup" and owner:
+            if self.path.startswith("/v1/notifications"):
+                value = api.dispatch(self.path, self.command, body, owner, token)
+            elif self.path == "/v1/backup" and owner:
                 with api.store.lock:
                     value = api.dispatch(self.path, self.command, body, owner, token)
             else:
@@ -102,13 +104,9 @@ def background(api, stop):
             with api.store.tx():
                 if api.store.setting("paused", False):
                     continue
-                rows = api.store.db.execute(
-                    "SELECT resource_id,config FROM monitors WHERE next_at<=? LIMIT 4", (time.time(),)
-                ).fetchall()
-            for row in rows:
-                result, detail = monitoring.probe(json.loads(row["config"]))
-                with api.store.tx():
-                    monitoring.record(api.store, row["resource_id"], result, detail)
+            from .health import tick
+
+            tick(api.store)
             with api.store.tx():
                 monitoring.forward_once(api.store)
                 api.logs.retain(**api.store.setting("retention", {"days": 7, "max_bytes": 1024**3}))
@@ -144,7 +142,9 @@ def run(root=None):
         threading.Thread(target=server.serve_forever, daemon=True).start()
     from .sync_worker import graph_loop, file_loop, notification_loop
 
-    for worker in (background, graph_loop, file_loop, notification_loop):
+    from .notifier import inbox_worker
+
+    for worker in (background, graph_loop, file_loop, notification_loop, inbox_worker):
         threading.Thread(target=worker, args=(api, stop), daemon=True).start()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
