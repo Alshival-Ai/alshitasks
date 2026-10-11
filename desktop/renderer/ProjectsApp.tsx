@@ -61,6 +61,7 @@ export function ProjectsApp({
   const [actor, setActor] = useState<string>(),
     [manageStatuses, setManageStatuses] = useState(false),
     [activeBoard, setActiveBoard] = useState("");
+  useEffect(() => setBoardChoice(activeBoard), [activeBoard]);
   const [view, setView] = useState<View>("board"),
     [query, setQuery] = useState(""),
     [assignment, setAssignment] = useState(""),

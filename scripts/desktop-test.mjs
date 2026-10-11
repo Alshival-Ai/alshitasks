@@ -103,6 +103,7 @@ try {
       ),
     "no-drag",
   );
+  if (process.env.ALSHITASKS_TEST_NO_WM !== '1') {
   await page
     .getByRole("button", { name: "Maximize window", exact: true })
     .click();
@@ -115,6 +116,7 @@ try {
   await page
     .getByRole("button", { name: "Maximize window", exact: true })
     .waitFor();
+  } else console.log('Skipping native maximize/restore: fixture has no window manager.');
   await page.getByRole("button", { name: /New task/ }).click();
   await page
     .getByLabel("Title", { exact: true })
@@ -534,7 +536,7 @@ try {
     ),
     true,
   );
-  await page.getByRole("button", { name: "Expand menu", exact: true }).click();
+  await page.getByRole("button", { name: "Open navigation", exact: true }).click();
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

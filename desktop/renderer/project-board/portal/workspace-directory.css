@@ -22,3 +22,14 @@ body.alshival-app .wd-card-title:is(button){font:inherit;border:0;background:non
 body.alshival-app .wd-open.button{border:0;background:var(--matrix-color-b,#7b4dff);color:white;padding:10px 14px;border-radius:10px;font-size:13px}
 body:not(.app-menu-open):not(.app-menu-pinned) .wd-navigation .nav-label{display:none}
 .workspace-frame{overflow:auto;flex:1;min-height:0}.app-sidebar .wd-navigation{max-height:calc(100dvh - 80px)}
+
+/* Override the legacy shell grid and full-width form fields. */
+.alshival-app .app-sidebar nav.wd-nav-list{display:flex;flex-direction:column;justify-content:flex-start;align-content:flex-start;margin:0;gap:4px}
+.alshival-app .app-sidebar nav.wd-nav-list>a,.alshival-app .app-sidebar nav.wd-nav-list>button{flex:none}
+.alshival-app #app-page>#main:has(.wd-directory){padding:0}
+.alshival-app .wd-controls .wd-search,.alshival-app .wd-controls .wd-startup{display:flex;flex-flow:row wrap;align-items:center;gap:8px}
+.alshival-app .wd-controls input[type=search]{width:240px;max-width:100%;flex:0 1 240px}
+.alshival-app .wd-controls label{white-space:nowrap;margin:0}
+.alshival-app .wd-controls select{width:auto;margin:0}
+.alshival-app .wd-controls .button{margin:0}
+.alshival-app .wd-open.button{background:var(--app-ink,#0b0c11);color:var(--app-paper,#fff)}
