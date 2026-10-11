@@ -125,6 +125,13 @@ Each workspace reconciles every 27–30 seconds even without live delivery. File
 transfers and account discovery run separately. Existing conflict review and
 unsaved-editor protections remain authoritative.
 
+Settings reads and writes take the store's reentrant lock, including background
+credential checks, to prevent concurrent use of SQLite's prepared statements.
+Credential refresh never acquires the store lock while holding the token lock.
+Background workers are supervised: unexpected errors record retry status, log a
+content-free warning, and restart after one second instead of silently stopping
+sync. A recovering graph worker is exposed as offline/retrying in sync details.
+
 Settings → Sync details shows delivery health, last sync/notification and retries.
 A live-stream failure displays Reconnecting when HTTP sync still works; an HTTP
 outage displays Offline—changes saved locally. Initial/full snapshots and binary

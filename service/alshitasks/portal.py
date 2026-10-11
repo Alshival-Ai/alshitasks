@@ -158,18 +158,21 @@ class Portal:
         return dict(r)
 
     def token(self, c):
+        from . import managed
+
         # Rotation is serialized across all workspace views of the same account credential.
         with self.store.lock:
             credential = self.store.setting("credential:" + c["id"], c["id"])
             current = self.connection(c["id"])
+            managed_account = managed.enabled(self.store)
+        if managed_account:
+            return managed.token(self.store, current)
         with self.store.token_lock:
             return self._token(current, credential)
 
     def _token(self, c, credential):
-        from . import managed
-
-        if managed.enabled(self.store):
-            return managed.token(self.store, c)
+        # Never acquire store.lock while holding token_lock: sign-out takes
+        # them in the opposite order to fence credential deletion.
         if c["state"] not in ("connected", "syncing"):
             raise Problem("Connection is disconnected; sign in again", 401)
         value = json.loads(Secrets().get(credential))

@@ -29,6 +29,8 @@ def catalog(store):
         pending = tally['pending'] if tally else 0
         trouble = tally['trouble'] if tally else 0
         health = store.setting("sync:" + r["id"], {})
+        if store.setting('worker:graph_loop', {}).get('state') == 'retrying':
+            health = dict(health, state='offline', error='Sync worker interrupted; retrying')
         live = store.setting("live:" + store.setting("credential:" + r["id"], r["id"]), {})
         incoming = int(store.setting("sync_notice:" + r["id"], 0)) > store.setting("sync_ack:" + r["id"], 0)
         rows.append(

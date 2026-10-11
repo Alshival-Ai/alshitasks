@@ -1,6 +1,7 @@
 import fcntl
 import http.server
 import json
+import logging
 import os
 import signal
 import socket
@@ -115,6 +116,26 @@ def background(api, stop):
             pass
 
 
+def supervise(api, stop, worker):
+    """Unexpected failures must not silently disable a background worker."""
+    while not stop.is_set() and not api.stopping:
+        try:
+            with api.store.tx():
+                api.store.set_setting('worker:' + worker.__name__, {'state': 'running'})
+            worker(api, stop)
+            if stop.is_set() or api.stopping:
+                return
+        except Exception:
+            # Exception text can contain request content or credentials.
+            logging.getLogger(__name__).warning('Background worker %s interrupted; retrying', worker.__name__)
+        try:
+            with api.store.tx():
+                api.store.set_setting('worker:' + worker.__name__, {'state': 'retrying', 'at': time.time()})
+        except Exception:
+            pass  # A temporary local database failure must also recover.
+        stop.wait(1)
+
+
 def run(root=None):
     os.umask(0o077)
     paths = Paths(root)
@@ -145,7 +166,7 @@ def run(root=None):
     from .notifier import inbox_worker
 
     for worker in (background, graph_loop, file_loop, notification_loop, inbox_worker):
-        threading.Thread(target=worker, args=(api, stop), daemon=True).start()
+        threading.Thread(target=supervise, args=(api, stop, worker), daemon=True, name=worker.__name__).start()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     stop.wait()

@@ -143,11 +143,15 @@ class Store:
                 raise
 
     def setting(self, key, default=None):
-        row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
-        return json.loads(row[0]) if row else default
+        # check_same_thread=False permits sharing; it does not serialize the
+        # execute/fetch pair or protect the driver's prepared statement cache.
+        with self.lock:
+            row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+            return json.loads(row[0]) if row else default
 
     def set_setting(self, key, value):
-        self.db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, json.dumps(value)))
+        with self.lock:
+            self.db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, json.dumps(value)))
 
     def row(self, row):
         if row is None:
