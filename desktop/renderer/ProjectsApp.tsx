@@ -592,7 +592,21 @@ export function ProjectsApp({
                   expanded={expanded}
                   manager={manageStatuses}
                 />
-                <div className="sp-desktop-sections sp-gantt-layout">
+                <div className="sp-desktop-sections">
+                  <Canvas
+                    key={`${storageNamespace}:${activeBoard}`}
+                    items={activeItems}
+                    members={members}
+                    actor={actor}
+                    manager={manageStatuses}
+                    namespace={storageNamespace}
+                    board={activeBoard}
+                    change={change}
+                    open={open}
+                    create={(next) => void create(next)}
+                    onDirty={noteDirty}
+                    expandedIds={opened}
+                  />
                   <section
                     className="sp-desktop-timeline"
                     aria-label="Timeline"
@@ -627,20 +641,6 @@ export function ProjectsApp({
                       compact
                     />
                   </section>
-                  <Canvas
-                    key={`${storageNamespace}:${activeBoard}`}
-                    items={activeItems}
-                    members={members}
-                    actor={actor}
-                    manager={manageStatuses}
-                    namespace={storageNamespace}
-                    board={activeBoard}
-                    change={change}
-                    open={open}
-                    create={(next) => void create(next)}
-                    onDirty={noteDirty}
-                    expandedIds={opened}
-                  />
                 </div>
               </>
             )}

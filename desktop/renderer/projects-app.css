@@ -411,3 +411,18 @@
   background: #0f172a;
   color: #e2e8f0;
 }
+
+/* Match the portal board: notes/resources first, compact schedule alongside. */
+@media (max-width: 1050px) {
+  .projects-app .shared-project .sp-desktop-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@container (max-width: 900px) {
+  .projects-app .shared-project .sp-desktop-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.projects-app .sp-desktop-timeline .sp-timeline > .sp-empty {
+  display: block;
+}

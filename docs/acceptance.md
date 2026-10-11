@@ -82,3 +82,15 @@ interactive header regions, maximize/restore and existing offline/workspace flow
 Exact installed 0.1.6 passes the extended UI checks on X11 and Wayland. The 0.1.5
 upgrade fixture is unchanged after opening with 0.1.6; the user service stays active.
 Artifact SHA-256: `ef966e6faeeab2b7d125c4af394511f08843faa9b8a8e15d2433078ad4e0e397`.
+
+## Desktop 0.1.7 — portal board section layout
+
+The standard board places Notes & Resources in the left column and a compact
+schedule in the right column, using the portal's 1.65:1 proportions and 32px gap.
+Narrow windows stack notes first. The full Timeline tab retains the Gantt view.
+Build/typecheck and the existing source UI editing/navigation checks pass.
+
+Exact installed X11 editing/navigation checks pass. A Wayland layout inspection
+confirms notes left/timeline right at desktop width, notes above timeline at 760px,
+and no page overflow. The compact schedule omits Gantt controls.
+Artifact SHA-256: `d296818ab6ae01d1da7f4fa057057a884077a492196687b2a3f24f44b1146e80`.
