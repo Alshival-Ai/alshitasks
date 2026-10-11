@@ -24,10 +24,6 @@ def attach(store, item_id, name, content, replaces=None):
         data = base64.b64decode(content, validate=True)
     except Exception:
         raise Problem("Invalid attachment encoding")
-    import re
-
-    if re.search(rb"-----BEGIN (?:OPENSSH |RSA |EC |DSA |ENCRYPTED )?PRIVATE KEY-----", data):
-        raise Problem("Use the resource's SSH settings for private keys; keys stay on this computer")
     if len(data) > MAX_ATTACHMENT:
         raise Problem("Attachment exceeds 20 MiB", 413)
     ident = replaces or uid()

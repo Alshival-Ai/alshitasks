@@ -60,9 +60,10 @@ Conflicting deletions offer to retain the changed portal file.
 
 Resource SSH settings belong to this computer. The native file chooser copies a
 private key into the user's private application configuration directory with mode
-0600. Keys never become graph attachments, outbox entries, portal uploads or app
-backup contents. Ordinary attachment import rejects recognizable PEM/OpenSSH
-private-key headers. This detection does not classify every possible secret file.
+0600. Keys imported through SSH setup never become graph attachments, outbox entries,
+portal uploads or app backup contents. Files explicitly chosen under Attachments
+are treated as ordinary files, including SSH keys: there is no extension or
+private-key-content rejection, and connected-board attachments sync normally.
 Users may instead use their SSH agent. Configuration manages `alt-*` aliases in
 `~/.ssh/alshitasks.conf` and includes it from `~/.ssh/config`, preserving unrelated
 configuration. OpenSSH performs host-key verification. Removing an alias does not

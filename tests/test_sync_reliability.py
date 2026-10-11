@@ -189,13 +189,17 @@ class Reliability(unittest.TestCase):
             self.assertTrue(acquired)
 
     def test_ssh_key_is_private_local_configuration_not_attachment(self):
-        import os, base64
+        import subprocess, base64
         from alshitasks import ssh, files
 
         resource = self.create("resource", title="Server")
         source = self.s.paths.data / "fixture-key"
-        secret = b"-----BEGIN OPENSSH PRIVATE KEY-----\nfixture\n-----END OPENSSH PRIVATE KEY-----\n"
-        source.write_bytes(secret)
+        subprocess.run(
+            ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", "isolated-test", "-f", str(source)],
+            check=True,
+            capture_output=True,
+        )
+        secret = source.read_bytes()
         with self.s.tx():
             result = ssh.import_key(
                 self.s,
@@ -213,8 +217,17 @@ class Reliability(unittest.TestCase):
         self.assertIn("Host alt-fixture", (self.s.paths.home / ".ssh/alshitasks.conf").read_text())
         self.assertEqual(self.s.db.execute("SELECT COUNT(*) FROM attachments").fetchone()[0], 0)
         self.assertEqual(self.s.db.execute("SELECT COUNT(*) FROM outbox").fetchone()[0], 0)
-        with self.assertRaisesRegex(Problem, "SSH settings"), self.s.tx():
-            files.attach(self.s, resource["id"], "key", base64.b64encode(secret).decode())
+        # Deliberately attached key files follow ordinary attachment rules.
+        # Dedicated SSH setup above still produces no attachment or sync job.
+        with self.s.tx():
+            attached = files.attach(self.s, resource["id"], "server.ssh", base64.b64encode(secret).decode())
+        self.assertEqual((self.s.paths.attachments / attached["id"]).read_bytes(), secret)
+        self.assertEqual(self.s.db.execute("SELECT COUNT(*) FROM aliases").fetchone()[0], 1)
+        self.sync()
+        connected = local_id(self.c["id"], self.record["id"])
+        with self.s.tx():
+            shared = files.attach(self.s, connected, "server.ssh", base64.b64encode(secret).decode())
+        self.assertEqual(self.s.setting("file_job:" + shared["id"])["state"], "queued")
 
     def test_attachment_conflict_keeps_both_without_overwriting_local_bytes(self):
         import base64
