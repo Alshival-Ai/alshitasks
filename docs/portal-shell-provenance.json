@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/Alshival-Ai/website",
+  "commit": "9d430989531474edeb9da00ae2aec2bacaef9bde",
+  "files": {
+    "customer_hub/static/customer_hub/app-shell.css": "e2f18b90c001131bac4f8ea70a4a6428d524c283040745dcd81ff5190d366176"
+  },
+  "adaptations": "Local font URLs; React chrome uses portal sidebar classes, cube markup and project/settings SVGs. Desktop navigation contains Projects and Settings only. Lato font remains OFL licensed; see desktop/assets/lato-OFL.txt."
+}

@@ -5,3 +5,6 @@ Includes Alshival-authored Neural Labs Projects components and project-tool cont
 Extraction source revisions and hashes: docs/provenance.json.
 Public Sans font: SIL Open Font License 1.1, retained alongside the font.
 Dependency license notices are included in packaged Electron/dependency distributions.
+
+Portal shell styling and navigation icons: Alshival.Ai website, 9d43098.
+Lato font: SIL Open Font License 1.1; desktop/assets/lato-OFL.txt.

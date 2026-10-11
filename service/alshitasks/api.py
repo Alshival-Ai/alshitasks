@@ -76,7 +76,7 @@ class API:
             if grant["resource_id"] and path not in ("/v1/logs", "/v1/monitoring", "/v1/heartbeat"):
                 raise Problem("Resource grant cannot access project records", 403)
         if path == "/v1/health":
-            return {"ok": True, "version": "0.1.3"}
+            return {"ok": True, "version": "0.1.4"}
         if path == "/v1/mcp":
             return self.tool(body.get("name"), body.get("arguments", {}), owner=owner, token=token)
         if path.startswith("/v1/projects"):

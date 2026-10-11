@@ -29,3 +29,18 @@ Isolated fixtures never import live databases or credentials. The reusable prese
 Pending operator acceptance: Samuel’s ordinary desktop use, individual browser consent after the matching portal API release, live concurrent Neural Labs synchronization, and other team accounts. Standard OpenSSH owns host-key verification; an actual changed-key endpoint has not been exercised in this pilot.
 
 A clean Ubuntu container validates package dependencies and CLI provisioning; it does not substitute for a clean graphical-machine installation test. Public binary publication remains gated on that graphical-machine test and pilot acceptance. The existing `alshival` provisioning package remains unchanged until acceptance.
+
+## Desktop 0.1.4 — portal navigation
+
+Reuses the portal shell CSS, Lato wordmark and navigation SVGs. Projects and
+Settings are the only application destinations; Connections is inside Settings.
+Resource and log service APIs remain available; their standalone pages are removed.
+The icon rail expands to the portal's 256px sidebar and remembers its state.
+Installed package UI tests cover collapsed/expanded persistence across reload,
+Settings connections, 760px layout without document overflow, existing offline
+editing/views/Trash and Electron sandbox preferences. No portal deployment is
+part of this desktop update.
+
+0.1.4 installed UI passed on X11 and Wayland (Wayland first attempt lost its
+window during Trash restore; the repeat completed). Build/typecheck passed.
+Artifact SHA-256: `f5aad27b34c117e57c1e4f5b97d1a2771b1377aa91b960364e6bec6b860e0291`.

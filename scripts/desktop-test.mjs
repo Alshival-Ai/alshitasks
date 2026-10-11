@@ -128,14 +128,60 @@ try {
   await page.screenshot({
     path: "/tmp/alshitasks-desktop-projects.png",
     fullPage: true,
+    animations: "disabled",
   });
-  for (const name of ["Resources", "Logs", "Connections", "Settings"]) {
-    await page.getByRole("button", { name, exact: true }).click();
-    await page.getByRole("heading", { level: 1 }).waitFor();
-  }
+  const nav = page.getByRole("navigation", { name: "Application" });
+  assert.deepEqual(await nav.getByRole("link").allTextContents(), [
+    "Projects",
+    "Settings",
+  ]);
+  await page.getByRole("button", { name: "Expand menu", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Collapse menu", exact: true })
+    .waitFor();
+  await page.screenshot({
+    animations: "disabled",
+    path: "/tmp/alshitasks-sidebar-expanded.png",
+  });
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Collapse menu", exact: true })
+    .waitFor();
+  await nav.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
+  await page
+    .getByRole("heading", { name: "Connections", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Connect in browser", exact: true })
+    .waitFor();
+  await page
+    .getByRole("button", { name: "Collapse menu", exact: true })
+    .click();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Expand menu", exact: true })
+    .waitFor();
+  await page.setViewportSize({ width: 760, height: 700 });
+  await nav.getByRole("link", { name: "Settings", exact: true }).click();
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    true,
+  );
+  await page.getByRole("button", { name: "Expand menu", exact: true }).click();
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    true,
+  );
+  await page.setViewportSize({ width: 1380, height: 900 });
   await page.screenshot({
     path: "/tmp/alshitasks-desktop-settings.png",
     fullPage: true,
+    animations: "disabled",
   });
   assert.deepEqual(errors, []);
   console.log(
