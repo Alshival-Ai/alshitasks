@@ -37,13 +37,45 @@ await page.addInitScript(() => {
       scopes: ["project:read", "project:write"],
     })),
   ];
+  const boards = [
+    {
+      id: "board-one",
+      revision: 1,
+      kind: "board",
+      data: { title: "Delivery" },
+    },
+    {
+      id: "board-two",
+      revision: 1,
+      kind: "board",
+      data: { title: "Planning" },
+    },
+  ];
   window.calls = [];
   window.externalLinks = [];
   window.tasks = {
-    request: async (path) => {
+    request: async (path, method = "GET", body) => {
       window.calls.push(path);
       const url = new URL(path, "http://fixture"),
         p = url.pathname;
+      if (p.endsWith("/boards")) return { boards: structuredClone(boards) };
+      if (p.endsWith("/items") && method === "POST") {
+        const item = {
+          id: "created-board",
+          revision: 1,
+          kind: body.kind,
+          data: body.data,
+        };
+        boards.push(item);
+        return { item };
+      }
+      if (p.includes("/items/") && method === "PATCH") {
+        const item = boards.find((b) => b.id === p.split("/").pop());
+        if (item.revision !== body.revision) throw Error("Stale revision");
+        Object.assign(item.data, body.data);
+        item.revision++;
+        return { item };
+      }
       if (p === "/v1/workspaces") return { workspaces: rows };
       if (p === "/v1/portal/account")
         return {
@@ -115,12 +147,68 @@ try {
   );
   await page.locator(".wd-directory input[type=search]").fill("Tracegrade");
   assert.equal(await page.locator(".wd-card").count(), 1);
+  await page.locator(".wd-card summary").click();
   await page
-    .getByRole("button", { name: "Open workspace", exact: false })
+    .getByRole("button", { name: "Manage boards", exact: true })
+    .click();
+  const manager = page.getByRole("region", {
+    name: "Manage boards in Tracegrade",
+  });
+  await manager.getByLabel("Board name", { exact: true }).fill("Release");
+  await manager
+    .getByRole("button", { name: "Create board", exact: true })
+    .click();
+  await manager
+    .getByLabel("Name for Release", { exact: true })
+    .fill("Release checks");
+  const form = manager
+    .locator("form")
+    .filter({ has: page.getByLabel("Name for Release", { exact: true }) });
+  await form.getByRole("button", { name: "Rename", exact: true }).click();
+  const renamed = manager.locator("form").filter({
+    has: page.getByLabel("Name for Release checks", { exact: true }),
+  });
+  await renamed
+    .getByRole("button", { name: "Archive board", exact: true })
+    .click();
+  await renamed
+    .getByRole("button", { name: "Restore board", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Boards in Tracegrade" })
+    .getByRole("button", { name: "Planning", exact: true })
     .click();
   await page
     .getByRole("heading", { name: "Tracegrade", exact: true, level: 1 })
     .waitFor();
+  const boardNav = page.getByRole("navigation", {
+    name: "Current workspace boards",
+  });
+  await page.waitForFunction(() =>
+    document
+      .querySelector('.wd-board-navigation [aria-current="page"]')
+      ?.textContent.includes("Planning"),
+  );
+  await boardNav.getByRole("button", { name: "Delivery", exact: true }).click();
+  await page.waitForFunction(() =>
+    document
+      .querySelector('.wd-board-navigation [aria-current="page"]')
+      ?.textContent.includes("Delivery"),
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Open board", exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Manage boards", exact: true })
+      .count(),
+    0,
+  );
+  assert.equal(
+    await page.getByLabel("Project board", { exact: true }).count(),
+    0,
+  );
   await page
     .getByRole("button", { name: "Settings for Tracegrade", exact: true })
     .click();

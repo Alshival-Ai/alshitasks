@@ -72,9 +72,28 @@ function App() {
   const [agentConfig, setAgentConfig] = useState("");
   const [grants, setGrants] = useState<any[]>([]);
   const [recoveryWorkspace, setRecoveryWorkspace] = useState("");
+  const [boardNavigation, setBoardNavigation] = useState<Item[]>([]);
+  const [activeBoard, setActiveBoard] = useState("");
+  const [boardRequest, setBoardRequest] = useState<{
+    id: string;
+    serial: number;
+  }>();
+  const selectBoard = (id: string, board: string) => {
+    if (navigationGuard.current && !navigationGuard.current()) return;
+    setRecoveryWorkspace("");
+    setBoardRequest({ id: board, serial: Date.now() });
+    if (id !== workspace) setBoardNavigation([]);
+    selectWorkspace(id);
+    setWorkspace(id);
+    setTab("Projects");
+    if (window.innerWidth <= 900) setExpanded(false);
+    writeDeviceState(accountInfo.account?.id || "local", "workspace", id);
+  };
   const changeWorkspace = (id: string, recovery = false) => {
     if (navigationGuard.current && !navigationGuard.current()) return false;
     setRecoveryWorkspace(recovery ? id : "");
+    setBoardRequest(undefined);
+    if (id !== workspace) setBoardNavigation([]);
     setTab("Projects");
     if (window.innerWidth <= 900) setExpanded(false);
     selectWorkspace(id);
@@ -139,11 +158,11 @@ function App() {
     setItems(all);
     setSettings(await api("/v1/settings"));
     const info = await api("/v1/portal/account");
-    setAccountInfo(info);
     setLocalBoards(
       (await api("/v1/projects/boards?workspace_id=" + LOCAL_WORKSPACE)).boards,
     );
     setPublications((await api("/v1/portal/publish")).publications);
+    setAccountInfo(info);
     setWorkspaces(visibleWorkspaces);
     setGrants((await api("/v1/projects/keys")).keys);
     setConflicts((await api("/v1/conflicts")).conflicts);
@@ -281,6 +300,37 @@ function App() {
               current={tab === "Projects" ? workspace : ""}
               select={changeWorkspace}
             />
+            {tab === "Projects" && (
+              <nav
+                className="wd-board-navigation"
+                aria-label="Current workspace boards"
+              >
+                <p className="nav-label">Boards</p>
+                {workspace === LOCAL_WORKSPACE && (
+                  <button
+                    title="Workspace board"
+                    aria-current={!activeBoard ? "page" : undefined}
+                    onClick={() => selectBoard(workspace, "")}
+                  >
+                    <span aria-hidden="true">▤</span>
+                    <span className="nav-label">Workspace board</span>
+                  </button>
+                )}
+                {boardNavigation
+                  .filter((b) => !b.data.archived)
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      title={b.data.title}
+                      aria-current={activeBoard === b.id ? "page" : undefined}
+                      onClick={() => selectBoard(workspace, b.id)}
+                    >
+                      <span aria-hidden="true">▤</span>
+                      <span className="nav-label">{b.data.title}</span>
+                    </button>
+                  ))}
+              </nav>
+            )}
           </div>
         </div>
       </aside>
@@ -432,12 +482,16 @@ function App() {
               select={changeWorkspace}
               startup={startup}
               setStartup={setStartup}
+              selectBoard={selectBoard}
             />
           )}
           {tab === "Projects" && (
             <ProjectsApp
               key={workspace}
               workspaceId={workspace}
+              boardRequest={boardRequest}
+              onBoardCatalog={setBoardNavigation}
+              onActiveBoard={setActiveBoard}
               workspaceName={
                 workspaces.find((w) => w.id === workspace)?.name ||
                 "Local workspace"

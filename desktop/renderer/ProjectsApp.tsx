@@ -38,8 +38,14 @@ export function ProjectsApp({
   workspaceSettings,
   navigationGuard,
   notificationTarget,
+  boardRequest,
+  onBoardCatalog,
+  onActiveBoard,
 }: {
   notificationTarget?: { id: string; serial: number };
+  boardRequest?: { id: string; serial: number };
+  onBoardCatalog?: (boards: Item[]) => void;
+  onActiveBoard?: (id: string) => void;
   storageNamespace?: string;
   workspaceId?: string;
   workspaceName?: string;
@@ -51,7 +57,6 @@ export function ProjectsApp({
     !!workspaceSettings?.scopes?.includes("project:write");
   const canCreateTask =
     canWrite || !!workspaceSettings?.scopes?.includes("tasks:write");
-  const [boardChoice, setBoardChoice] = useState("");
   const api = useMemo(() => workspaceApi(workspaceId), [workspaceId]);
   const [items, setItems] = useState<Item[]>([]),
     [boards, setBoards] = useState<Item[]>([]),
@@ -60,8 +65,16 @@ export function ProjectsApp({
     [members, setMembers] = useState<Member[]>([]);
   const [actor, setActor] = useState<string>(),
     [manageStatuses, setManageStatuses] = useState(false),
-    [activeBoard, setActiveBoard] = useState("");
-  useEffect(() => setBoardChoice(activeBoard), [activeBoard]);
+    [activeBoard, setActiveBoard] = useState(boardRequest?.id || "");
+  useEffect(() => {
+    if (boardRequest) {
+      setActiveBoard(boardRequest.id);
+      setSelected(null);
+      setEditorOpen(false);
+    }
+  }, [boardRequest?.serial]);
+  useEffect(() => onBoardCatalog?.(boards), [boards, onBoardCatalog]);
+  useEffect(() => onActiveBoard?.(activeBoard), [activeBoard, onActiveBoard]);
   const [view, setView] = useState<View>("board"),
     [query, setQuery] = useState(""),
     [assignment, setAssignment] = useState(""),
@@ -135,18 +148,20 @@ export function ProjectsApp({
     };
   }, [refresh, storageNamespace]);
   useEffect(() => {
+    if (!loaded) return;
     const active = boards.filter((board) => !board.data.archived);
     if (activeBoard && !active.some((board) => board.id === activeBoard)) {
-      setActiveBoard("");
+      setActiveBoard(active[0]?.id || "");
       setEditorOpen(false);
     } else if (
+      !boardRequest &&
       !activeBoard &&
       !items.some((item) => item.kind !== "board" && !item.data.board_id) &&
       active.length
     ) {
       setActiveBoard(active[0].id);
     }
-  }, [boards, items, activeBoard]);
+  }, [boards, items, activeBoard, loaded, boardRequest]);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (dirty.current) {
@@ -506,57 +521,6 @@ export function ProjectsApp({
             </details>
           )}
         </header>
-        <form
-          className="sp-toolbar"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (leaveBoard()) {
-              dirty.current = false;
-              setActiveBoard(boardChoice);
-              setSelected(null);
-              setEditorOpen(false);
-            }
-          }}
-        >
-          <label>
-            Project board{" "}
-            <select
-              value={boardChoice}
-              onChange={(event) => setBoardChoice(event.target.value)}
-            >
-              <option value="">Workspace board</option>
-              {boards
-                .filter((board) => !board.data.archived)
-                .map((board) => (
-                  <option key={board.id} value={board.id}>
-                    {board.data.title}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <button className="button" type="submit">
-            Open board
-          </button>
-          {manageStatuses && (
-            <button
-              className="button"
-              type="button"
-              onClick={() => {
-                const panel =
-                  document.querySelector<HTMLDetailsElement>(
-                    ".project-settings",
-                  );
-                if (panel) {
-                  panel.open = true;
-                  panel.scrollIntoView({ block: "start" });
-                  panel.querySelector("summary")?.focus();
-                }
-              }}
-            >
-              Manage boards
-            </button>
-          )}
-        </form>
         <nav className="sp-tabs" aria-label="Project views">
           {views.map((value) => (
             <a
@@ -1398,50 +1362,6 @@ export function ProjectsApp({
           <summary>Board settings</summary>
           {manageStatuses && (
             <>
-              <h2>Project boards</h2>
-              <form
-                className="sp-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const form = event.currentTarget,
-                    name = String(new FormData(form).get("name") ?? "").trim();
-                  void api<Item>("/items", "POST", {
-                    idempotency_key: crypto.randomUUID(),
-                    kind: "board",
-                    data: { title: name },
-                  })
-                    .then((board) => {
-                      setActiveBoard(board.id);
-                      form.reset();
-                      return refresh();
-                    })
-                    .catch((reason) => setError(reason.message));
-                }}
-              >
-                <label>
-                  Board name
-                  <input name="name" maxLength={120} required />
-                </label>
-                <button className="button btn matrix-btn" disabled={busy}>
-                  Create board
-                </button>
-              </form>
-              {boards.map((board) => (
-                <p key={board.id}>
-                  {board.data.title}{" "}
-                  <button
-                    className="button btn-frost"
-                    disabled={busy}
-                    onClick={() =>
-                      void change(board, { archived: !board.data.archived })
-                        .then(refresh)
-                        .catch((reason) => setError(reason.message))
-                    }
-                  >
-                    {board.data.archived ? "Restore board" : "Archive board"}
-                  </button>
-                </p>
-              ))}
               <h2>Board statuses</h2>
               <StatusEditor
                 key={activeBoard}

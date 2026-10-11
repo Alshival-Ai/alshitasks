@@ -1,3 +1,4 @@
+import { WorkspaceBoards } from "./WorkspaceBoards";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./project-board/portal/workspace-directory.css";
 export type Workspace = {
@@ -197,12 +198,14 @@ export function WorkspaceDirectory({
   select,
   startup,
   setStartup,
+  selectBoard,
 }: {
   rows: Workspace[];
   current: string;
   select: (id: string) => void;
   startup: string;
   setStartup: (value: string) => void;
+  selectBoard: (workspace: string, board: string) => void;
 }) {
   const [query, setQuery] = useState(""),
     [page, setPage] = useState(1);
@@ -280,6 +283,7 @@ export function WorkspaceDirectory({
                         : w.sync || "Waiting to sync"}
               </span>
             )}
+            <WorkspaceBoards workspace={w} select={selectBoard} />
             <button
               className="wd-open button btn matrix-btn"
               onClick={() => select(w.id)}
