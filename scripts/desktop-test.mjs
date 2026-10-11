@@ -149,6 +149,54 @@ try {
   await page
     .getByRole("button", { name: "Offline resource", exact: true })
     .click();
+  await page.evaluate(async () => {
+    const { items } = await window.tasks.request("/v1/projects/items");
+    const resource = items.find(
+      (i) => i.kind === "resource" && i.data.title === "Offline resource",
+    );
+    await window.tasks.request("/v1/logs", "POST", {
+      resource_id: resource.id,
+      events: [
+        {
+          id: "desktop-log",
+          timestamp: new Date().toISOString(),
+          severity: "info",
+          message: "Offline log fixture",
+        },
+      ],
+    });
+  });
+  await page
+    .getByRole("navigation", { name: "Resource content" })
+    .getByRole("button", { name: "Logs", exact: true })
+    .click();
+  await page
+    .getByLabel("Message contains", { exact: true })
+    .fill("Offline log");
+  await page.getByRole("button", { name: "Refresh logs", exact: true }).click();
+  await page.getByText("Offline log fixture", { exact: true }).waitFor();
+  await page.evaluate(() => window.tasks.service("restart"));
+  await page.getByRole("button", { name: "Refresh logs", exact: true }).click();
+  await page.getByText("Offline log fixture", { exact: true }).waitFor();
+  await page.getByText("Send logs here", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Create sender token", exact: true })
+    .click();
+  await page.getByLabel("New sender token").waitFor();
+  await page
+    .getByRole("button", { name: "Dismiss token", exact: true })
+    .click();
+  assert.equal(await page.getByLabel("New sender token").count(), 0);
+  await page
+    .getByRole("button", { name: "Revoke Log sender", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Revoke Log sender", exact: true })
+    .waitFor({ state: "detached" });
+  await page.screenshot({ path: "/tmp/alshitasks-local-logs-light.png" });
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await page.screenshot({ path: "/tmp/alshitasks-local-logs-dark.png" });
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
   await page
     .getByRole("navigation", { name: "Resource content" })
     .getByRole("button", { name: "Settings", exact: true })

@@ -1,3 +1,4 @@
+import { ResourceLogs } from "./ResourceLogs";
 import { LocalSSH } from "./LocalSSH";
 import { Attachments } from "./Attachments";
 import { useEffect, useRef, useState } from "react";
@@ -625,26 +626,28 @@ export function PaperCard({
               {item.data.resource?.environment}
             </p>
             <nav aria-label="Resource content">
-              {["overview", "notes", "activity", "settings"].map((tab) => (
-                <button
-                  type="button"
-                  aria-current={section === tab ? "page" : undefined}
-                  key={tab}
-                  onClick={() => {
-                    setSection(tab);
-                    if (tab === "activity")
-                      void run(async () => {
-                        const { projectApi } = await import("./api");
-                        const data = await projectApi<{
-                          events: typeof history;
-                        }>(`/items/${item.id}/history`);
-                        setHistory(data.events);
-                      });
-                  }}
-                >
-                  {tab[0].toUpperCase() + tab.slice(1)}
-                </button>
-              ))}
+              {["overview", "notes", "logs", "activity", "settings"].map(
+                (tab) => (
+                  <button
+                    type="button"
+                    aria-current={section === tab ? "page" : undefined}
+                    key={tab}
+                    onClick={() => {
+                      setSection(tab);
+                      if (tab === "activity")
+                        void run(async () => {
+                          const { projectApi } = await import("./api");
+                          const data = await projectApi<{
+                            events: typeof history;
+                          }>(`/items/${item.id}/history`);
+                          setHistory(data.events);
+                        });
+                    }}
+                  >
+                    {tab[0].toUpperCase() + tab.slice(1)}
+                  </button>
+                ),
+              )}
             </nav>
             {section === "overview" && (
               <div className="connected-overview">
@@ -773,6 +776,7 @@ export function PaperCard({
                 <Attachments item={item.id} />
               </>
             )}
+            {section === "logs" && <ResourceLogs key={item.id} item={item} />}
             {section === "activity" && (
               <section>
                 <h3>Activity</h3>

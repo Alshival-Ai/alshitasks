@@ -371,6 +371,9 @@ class Portal:
             return self.connect(ORIGIN)
         if path in ("/v1/portal/logs", "/v1/portal/monitoring") and method == "GET":
             resource = q.get("resource_id")
+            from .workspaces import require_item
+
+            require_item(self.store, resource)
             row = self.store.db.execute(
                 "SELECT connection,remote_id FROM items WHERE id=? AND kind='resource'", (resource,)
             ).fetchone()

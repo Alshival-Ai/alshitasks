@@ -158,6 +158,22 @@ class Protocol(unittest.TestCase):
                         },
                     },
                 ]
+                requests.append(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 5,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "logs_query",
+                            "arguments": {
+                                "workspace_id": "00000000-0000-4000-8000-000000000001",
+                                "severity": "info",
+                                "text": "offline logs",
+                                "limit": 10,
+                            },
+                        },
+                    }
+                )
                 p = subprocess.run(
                     [sys.executable, str(script), "--root", d, "mcp"],
                     input="".join(json.dumps(r) + "\n" for r in requests),
@@ -171,6 +187,11 @@ class Protocol(unittest.TestCase):
                 self.assertEqual(len(results[1]["result"]["tools"]), 16)
                 self.assertIn("result", results[2])
                 self.assertIn("error", results[3])
+                self.assertEqual(
+                    results[4]["result"]["structuredContent"], {"events": [], "next_cursor": None}
+                )
+                log_tool = next(t for t in results[1]["result"]["tools"] if t["name"] == "logs_query")
+                self.assertIn("cursor", log_tool["inputSchema"]["properties"])
                 self.assertEqual((Path(d) / "runtime/service.sock").stat().st_mode & 0o777, 0o600)
             finally:
                 service.terminate()

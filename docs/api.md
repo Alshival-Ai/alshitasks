@@ -33,3 +33,78 @@ Owner-only Unix socket operations include settings, credential/grant management,
 `alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The extracted 13-tool project contract is in `contracts/project-tools.v1.json`; log and health queries add two read-only tools. Default access is read-only; explicit write grants are stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
 
 Connected resource logs: `GET /v1/portal/logs?resource_id=LOCAL_UUID` uses the signed-in user’s live permissions and maps the cached resource ID. `GET /v1/portal/monitoring?resource_id=LOCAL_UUID` reads permitted portal health metadata. These are desktop-owner operations and fail offline rather than borrowing a managed principal.
+
+## Standalone log collection
+
+No portal login, ClickHouse, or database server is needed. Resource logs live in
+`$XDG_DATA_HOME/alshitasks/logs.sqlite` (normally `~/.local/share/alshitasks/logs.sqlite`).
+The desktop, API, and local MCP read this same store. Project synchronization does
+not upload logs; explicitly configured forwarding remains a separate operation.
+
+In Settings, enable a loopback HTTP port and choose **Save and restart service**.
+Open a resource's **Logs → Send logs here** section to create a named, write-only
+sender token. Copy it before dismissing it; only its hash is kept for validation.
+Revoke a token to stop a sender, or create a replacement and revoke the old one.
+Agent MCP grants are managed separately in Settings → Integrations.
+
+`GET /v1/logs` and the `logs_query` MCP tool accept `resource_id`, `workspace_id`,
+`since`, `until`, `severity`, `text`, `limit` and `cursor`. Responses contain
+`events` and `next_cursor`. Continue with the same filters and the returned
+cursor until it is null. Queries are ordered by descending timestamp, then event
+ID and resource ID. Refresh to see newer arrivals; pagination is not a frozen
+snapshot. Workspace filters are independent of the selected desktop tab.
+Resource-scoped grants require their resource ID and cannot query other resources.
+`GET /v1/logs/setup?resource_id=UUID` is desktop-owner-only setup metadata.
+
+### Sending from another machine
+
+For example, if the desktop listener is port 8765, run this on the sending machine:
+
+```sh
+ssh -N -L 18765:127.0.0.1:8765 desktop-user@desktop-host
+```
+
+Send JSON batches to `http://127.0.0.1:18765/v1/logs`, using the resource-specific
+Bearer token. The SSH server and access must already be configured by the operator.
+The resource's setup panel provides a sender example without embedding its token.
+
+Alternatively, terminate HTTPS at an operator-managed reverse proxy on the desktop
+host. A minimal Nginx location inside a TLS-enabled server is:
+
+```nginx
+location = /v1/logs {
+    limit_except POST { deny all; }
+    client_max_body_size 1m;
+    proxy_pass http://127.0.0.1:8765;
+    proxy_set_header Authorization $http_authorization;
+    proxy_http_version 1.1;
+    proxy_request_buffering on;
+}
+```
+
+Configure a valid certificate and network access separately. Authentication remains
+mandatory at the local API; do not log Authorization headers. The application never
+opens firewall ports or creates a public listener. Use a sender that transmits a
+Content-Length, as the API rejects chunked requests.
+
+Senders should persist unsent batches and retry connection failures, 5xx responses,
+and uncertain acknowledgments with backoff, preserving event IDs. Correct 4xx errors
+before retrying. A successful acknowledgment follows a local database commit;
+retention can still expire accepted events, including already-old timestamps.
+Sleeping, powering off, and logging out can interrupt availability.
+
+The per-user systemd service starts at login after initial setup and keeps running
+when the window closes. Settings reports service status and offers restart controls.
+Without systemd, the detached fallback has no automatic restart or login startup.
+This version does not enable lingering or run a system-wide service.
+
+Application diagnostics are distinct from resource logs:
+
+```sh
+journalctl --user -u alshitasks.service
+```
+
+The resource viewer defaults to **On this device**. **Portal** appears only for linked
+resources and requires a working portal connection; portal failures never silently
+substitute local results. Local backups include SQLite resource logs and attachments;
+credentials remain outside backups.

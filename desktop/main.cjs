@@ -202,7 +202,7 @@ const handle = (name, fn) =>
 handle("tasks:request", (url, method, body) => {
   if (
     typeof url !== "string" ||
-    !/^\/v1\/[a-zA-Z0-9/_?=&%.,:-]+$/.test(url) ||
+    !/^\/v1\/[a-zA-Z0-9/_?=&%+.,:-]+$/.test(url) ||
     !["GET", "POST", "PATCH", "DELETE"].includes(method) ||
     url.startsWith("/v1/backup") ||
     url.startsWith("/v1/stop") ||
@@ -327,6 +327,44 @@ handle("tasks:restore", async () => {
   return result;
 });
 handle("tasks:service", async (action) => {
+  if (action === "status") {
+    const running = await request("/v1/health").then(
+      () => true,
+      () => false,
+    );
+    const managed = await command("systemctl", [
+      "--user",
+      "is-active",
+      "alshitasks.service",
+    ]).then(
+      () => true,
+      () => false,
+    );
+    return { running, managed };
+  }
+  if (action === "restart") {
+    await request("/v1/stop", "POST").catch(() => {});
+    if (!testRoot)
+      await command("systemctl", [
+        "--user",
+        "stop",
+        "alshitasks.service",
+      ]).catch(() => {});
+    for (let i = 0; i < 100; i++) {
+      const running = await request("/v1/health").then(
+        () => true,
+        () => false,
+      );
+      if (!running) {
+        await serviceStart();
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error(
+      "Service is still stopping. Try starting it again shortly.",
+    );
+  }
   if (action === "start") {
     await serviceStart();
     return;

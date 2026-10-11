@@ -44,13 +44,17 @@ def mcp(paths, grant=None):
     catalog = list(tools().values()) + [
         {
             "name": "logs_query",
-            "description": "Query at most 100 resource log events",
+            "description": "Query local resource logs without a portal account; supports filters and pagination",
             "readOnly": True,
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "resource_id": {"type": "string"},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                    **{
+                        k: {"type": "string"}
+                        for k in ("workspace_id", "since", "until", "severity", "text", "cursor")
+                    },
                 },
                 "additionalProperties": False,
             },
@@ -111,7 +115,20 @@ def mcp(paths, grant=None):
                 if name in ("logs_query", "monitoring_status"):
                     from urllib.parse import urlencode
 
-                    if set(args) - ({"resource_id", "limit"} if name == "logs_query" else {"resource_id"}):
+                    if set(args) - (
+                        {
+                            "resource_id",
+                            "workspace_id",
+                            "since",
+                            "until",
+                            "severity",
+                            "text",
+                            "cursor",
+                            "limit",
+                        }
+                        if name == "logs_query"
+                        else {"resource_id"}
+                    ):
                         raise Problem("Invalid query")
                     value = call(
                         paths,

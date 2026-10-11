@@ -172,9 +172,38 @@ class API:
                     }
                 if method == "POST":
                     return grant_create(s, body)
+        if path == "/v1/logs/setup" and method == "GET":
+            if not owner:
+                raise Problem("Desktop owner authorization required", 403)
+            from .workspaces import require_item
+
+            row = require_item(s, resource)
+            if s.item(resource)["kind"] != "resource":
+                raise Problem("Choose a resource")
+            return {
+                "connected": bool(row["connection"]),
+                "http_port": s.setting("http_port", None),
+                "keys": [
+                    dict(r)
+                    for r in s.db.execute(
+                        "SELECT id,name,revoked_at FROM grants WHERE resource_id=?", (resource,)
+                    )
+                ],
+            }
         if path == "/v1/logs":
             if method == "GET":
-                return self.logs.query(q)
+                from .workspaces import require_item, visible
+
+                if resource:
+                    require_item(s, resource)
+                    resources = [resource]
+                else:
+                    resources = [
+                        r["id"]
+                        for r in s.db.execute("SELECT id,connection FROM items WHERE kind='resource'")
+                        if visible(s, r["connection"]) and not s.setting("unavailable:" + r["id"], False)
+                    ]
+                return self.logs.query(q, resources=resources)
             if method == "POST":
                 if s.item(resource)["kind"] != "resource":
                     raise Problem("Log ingestion requires a resource")

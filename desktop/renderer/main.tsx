@@ -566,7 +566,7 @@ function App() {
           {tab === "Settings" && (
             <>
               <section>
-                <h2>Agent access</h2>
+                <h2>Integrations · Agent access</h2>
                 <p>
                   The bundled MCP server works locally without an Alshival.Ai
                   account.
@@ -587,7 +587,12 @@ function App() {
                     void work(async () => {
                       const result = await api("/v1/agent-grants", "POST", {
                         name: "Desktop agent",
-                        scopes: ["project:read", "project:write"],
+                        scopes: [
+                          "project:read",
+                          "project:write",
+                          "logs:read",
+                          "monitor:read",
+                        ],
                       });
                       setAgentConfig(JSON.stringify(result.config, null, 2));
                     })
@@ -665,6 +670,7 @@ function App() {
               </section>
               <section>
                 <h2>Background service</h2>
+                <ServiceStatus />
                 <p>
                   Closing the window leaves the service running after setup.
                 </p>
@@ -750,22 +756,32 @@ function App() {
               </section>
               <section>
                 <h2>Local API and retention</h2>
+                <p>
+                  Logs stay in local SQLite. Oldest events expire at the
+                  retention or storage limit.
+                </p>
+                <p>
+                  {settings.usage?.events ?? 0} events ·{" "}
+                  {((settings.usage?.bytes ?? 0) / 1024 ** 2).toFixed(1)} MiB of
+                  event data
+                </p>
                 <form
                   onSubmit={(e) => {
                     const f = data(e);
-                    void work(() =>
-                      api("/v1/settings", "PATCH", {
+                    void work(async () => {
+                      await api("/v1/settings", "PATCH", {
                         http_port: f.port ? Number(f.port) : null,
                         retention: {
                           days: Number(f.days),
                           max_bytes: Number(f.mb) * 1024 ** 2,
                         },
-                      }),
-                    );
+                      });
+                      await window.tasks.service("restart");
+                    });
                   }}
                 >
                   <label>
-                    Loopback HTTP port (blank disables; restart required)
+                    Loopback HTTP port (blank disables)
                     <input
                       name="port"
                       type="number"
@@ -796,7 +812,7 @@ function App() {
                       max="10240"
                     />
                   </label>
-                  <button>Save</button>
+                  <button>Save and restart service</button>
                 </form>
                 <code>alshitasks mcp</code>
                 <p>
@@ -898,5 +914,52 @@ function ConflictReview({
         Save reviewed version
       </button>
     </section>
+  );
+}
+
+function ServiceStatus() {
+  const [status, setStatus] = useState<{
+    running: boolean;
+    managed: boolean;
+  }>();
+  const [error, setError] = useState("");
+  const refresh = () =>
+    window.tasks
+      .service("status")
+      .then(setStatus)
+      .catch((e: Error) => setError(e.message));
+  useEffect(() => {
+    void refresh();
+    const timer = setInterval(() => void refresh(), 10000);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div>
+      <p role="status">
+        {error ||
+          (!status
+            ? "Checking service…"
+            : !status.running
+              ? "Service stopped"
+              : status.managed
+                ? "Running · starts at login and continues after closing this window"
+                : "Running without systemd · automatic restart and startup at login are unavailable")}
+      </p>
+      <p>
+        Sleep, logout, or powering off can interrupt collection. Senders should
+        buffer and retry.
+      </p>
+      <button
+        onClick={() => {
+          setError("");
+          void window.tasks
+            .service("restart")
+            .then(refresh)
+            .catch((e: Error) => setError(e.message));
+        }}
+      >
+        Restart service
+      </button>
+    </div>
   );
 }

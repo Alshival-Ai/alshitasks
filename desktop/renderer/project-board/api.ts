@@ -29,3 +29,7 @@ export function workspaceApi(selected: string) {
     ) as Promise<T>;
   };
 }
+
+export function selectedWorkspace() {
+  return workspace;
+}
