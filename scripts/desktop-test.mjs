@@ -115,7 +115,7 @@ try {
   await page
     .getByRole("button", { name: "Maximize window", exact: true })
     .waitFor();
-  await page.getByRole("button", { name: "New task +", exact: true }).click();
+  await page.getByRole("button", { name: /New task/ }).click();
   await page
     .getByLabel("Title", { exact: true })
     .fill("Offline acceptance task");
@@ -496,11 +496,9 @@ try {
     fullPage: true,
     animations: "disabled",
   });
-  const nav = page.getByRole("navigation", { name: "Application" });
-  assert.deepEqual(await nav.getByRole("link").allTextContents(), [
-    "Projects",
-    "Settings",
-  ]);
+  const nav = page.locator('.app-sidebar .wd-nav-list');
+  assert.equal(await nav.getByRole('button', {name:'Local workspace',exact:true}).count(),1);
+  const openSettings = async()=>{await page.getByRole('button',{name:'Account',exact:true}).click();await page.getByRole('button',{name:'Device settings',exact:true}).click();};
   await page.getByRole("button", { name: "Expand menu", exact: true }).click();
   await page
     .getByRole("button", { name: "Collapse menu", exact: true })
@@ -513,7 +511,7 @@ try {
   await page
     .getByRole("button", { name: "Collapse menu", exact: true })
     .waitFor();
-  await nav.getByRole("link", { name: "Settings", exact: true }).click();
+  await openSettings();
   await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
   await page
     .getByRole("heading", { name: "Alshival.Ai account", exact: true })
@@ -529,7 +527,7 @@ try {
     .getByRole("button", { name: "Expand menu", exact: true })
     .waitFor();
   await page.setViewportSize({ width: 760, height: 700 });
-  await nav.getByRole("link", { name: "Settings", exact: true }).click();
+  await openSettings();
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
@@ -561,7 +559,7 @@ with s.tx():
  s.set_setting('last_account',{'id':'fixture','origin':'https://alshival.ai'})
  for name in ('Workspace A','Workspace B'):
   c=uid()
-  s.db.execute('INSERT INTO connections VALUES(?,?,?,?,?,?,?)',(c,'https://alshival.ai','fixture',uid(),'disconnected',None,'{}'))
+  s.db.execute('INSERT INTO connections VALUES(?,?,?,?,?,?,?)',(c,'https://alshival.ai','fixture',uid(),'connected',None,'{}'))
   s.set_setting('workspace:'+c,{'name':name,'scopes':['project:read']})
   board=s.create({'kind':'board','data':{'title':name+' board'},'idempotency_key':uid()})
   task=s.create({'kind':'task','data':{'title':name+' task','board_id':board['id'],'status_id':next(x['id'] for x in s.statuses() if x.get('board_id')==board['id'] and x['legacy_state']=='todo')},'idempotency_key':uid()})
@@ -574,10 +572,10 @@ s.db.close()
   await page.reload();
   await page.locator(".workspace-toggle").click();
   await page
-    .getByRole("group", { name: "Workspaces", exact: true })
+    .locator("#workspace-options")
     .getByRole("button", { name: /Workspace A/ })
     .click();
-  await nav.getByRole("link", { name: "Projects", exact: true }).click();
+
   await page.getByText("Workspace A task", { exact: true }).first().waitFor();
   assert.equal(
     await page.getByText("Workspace B task", { exact: true }).count(),
@@ -585,7 +583,7 @@ s.db.close()
   );
   await page.locator(".workspace-toggle").click();
   await page
-    .getByRole("group", { name: "Workspaces", exact: true })
+    .locator("#workspace-options")
     .getByRole("button", { name: /Workspace B/ })
     .click();
   await page.getByText("Workspace B task", { exact: true }).first().waitFor();
@@ -593,6 +591,9 @@ s.db.close()
     await page.getByText("Workspace A task", { exact: true }).count(),
     0,
   );
+  await page.getByRole('button',{name:'Account',exact:true}).click();
+  await page.getByRole('button',{name:'Startup preferences'}).click();
+  await page.locator('.wd-startup select').selectOption('last');
   await page.reload();
   await page.getByText("Workspace B task", { exact: true }).first().waitFor();
   assert.deepEqual(errors, []);

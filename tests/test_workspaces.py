@@ -56,6 +56,21 @@ class Workspaces(unittest.TestCase):
         for row in self.s.db.execute("SELECT capabilities FROM connections"):
             self.assertIn("graph-sync-v2", json.loads(row[0])["features"])
 
+    def test_account_navigation_replaced_on_activation(self):
+        self.s.set_setting('account_navigation', [{'label':'Old admin','url':'/staff/users/'}])
+        activate(self.s, self.account, {'account_id':'7'})
+        self.assertEqual(self.s.setting('account_navigation'), [])
+
+    def test_catalog_keeps_summary_metadata_and_local_identity(self):
+        self.remote[0].update(kind='internal', settings_url='/workspace/settings/', unread=3)
+        self.discover()
+        from alshitasks.workspaces import catalog
+        rows = catalog(self.s)
+        self.assertEqual(rows[0]['id'], LOCAL)
+        remote = next(r for r in rows if r.get('portal_workspace_id') == self.remote[0]['id'])
+        self.assertEqual((remote['kind'], remote['unread']), ('internal', 3))
+        self.assertEqual(remote['settings_url'], '/workspace/settings/')
+
     def create(self, workspace, title="Board"):
         with self.s.tx(), scope(self.s, workspace):
             return self.s.create({"kind": "board", "data": {"title": title}, "idempotency_key": uid()})

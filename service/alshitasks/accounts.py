@@ -28,6 +28,7 @@ def activate(store, ident, capabilities):
         elif row["state"] == "connected":
             store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (row["id"],))
     store.set_setting("active_account", account)
+    store.set_setting("account_navigation", capabilities.get("navigation", []))
     store.set_setting("last_account", account)
     store.set_setting("discovery", {"next": 0})
     store.set_setting("publish_offer", True)
@@ -59,6 +60,7 @@ def signout(store):
         with store.token_lock:
             Secrets().delete(credential)
     store.set_setting("active_account", None)
+    store.set_setting("account_navigation", [])
     return {"signed_out": True, "local_copies_retained": True}
 
 
@@ -93,6 +95,7 @@ def discover(store, transport=None):
                 "UPDATE connections SET capabilities=? WHERE origin=? AND account=?",
                 (encoded, c["origin"], c["account"]),
             )
+            store.set_setting("account_navigation", capabilities.get("navigation", []))
             seen = set()
             for w in rows:
                 if "project:read" not in w["scopes"]:
@@ -144,6 +147,7 @@ def dispatch(store, path, method, body):
     if path == "/v1/portal/account" and method == "GET":
         return {
             "managed": enabled(store),
+            "navigation": store.setting("account_navigation", []) if store.setting("active_account") else [],
             "account": store.setting("active_account"),
             "status": store.setting("discovery", {}),
             "offer_publish": store.setting("publish_offer", False),

@@ -8,6 +8,8 @@ LOCAL = "00000000-0000-4000-8000-000000000001"
 
 def catalog(store):
     account = store.setting("active_account") or store.setting("last_account")
+    counts = {r['connection']: r for r in store.db.execute(
+        "SELECT connection, SUM(state='queued') AS pending, SUM(state IN ('draft','conflict')) AS trouble FROM outbox GROUP BY connection")}
     rows = [
         {
             "id": LOCAL,
@@ -23,18 +25,20 @@ def catalog(store):
         if not account:
             continue
         meta = store.setting("workspace:" + r["id"], {})
-        pending = store.db.execute(
-            "SELECT COUNT(*) FROM outbox WHERE connection=? AND state='queued'", (r["id"],)
-        ).fetchone()[0]
-        trouble = store.db.execute(
-            "SELECT COUNT(*) FROM outbox WHERE connection=? AND state IN ('draft','conflict')", (r["id"],)
-        ).fetchone()[0]
+        tally = counts.get(r['id'])
+        pending = tally['pending'] if tally else 0
+        trouble = tally['trouble'] if tally else 0
         health = store.setting("sync:" + r["id"], {})
         rows.append(
             {
                 "id": r["id"],
                 "name": meta.get("name", r["workspace"]),
                 "local": False,
+                "kind": meta.get("kind", "customer"),
+                "unread": meta.get("unread"),
+                "portal_origin": r["origin"],
+                "portal_workspace_id": r["workspace"],
+                "settings_url": meta.get("settings_url", ""),
                 "state": r["state"],
                 "scopes": meta.get("scopes", []),
                 "last_sync": r["cursor"],

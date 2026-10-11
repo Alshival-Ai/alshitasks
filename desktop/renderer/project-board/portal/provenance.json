@@ -54,6 +54,10 @@
     "stickers/api.svg": {
       "source": "Alshival.ai website: customer_hub/static/customer_hub/stickers/api.svg",
       "sha256": "e6f9690714555ca28a3755ce218051e7cef2aa4d48551c34b7d0b13cb91a1a07"
+    },
+    "workspace-directory.css": {
+      "source": "Alshival.ai website: customer_hub/static/customer_hub/workspace-directory.css",
+      "sha256": "fa21aca6bb598edb4b0d0eadbfb90a188b3fc4fc4395493c74fb4fa31f57e381"
     }
   },
   "sticky_note_adaptation": {

@@ -13,7 +13,7 @@ let app;
 try {
   app = await electron.launch({ executablePath, args, env, chromiumSandbox: true });
   const page = await app.firstWindow();
-  await page.getByRole('button', { name: 'New task +', exact: true }).waitFor();
+  await page.getByRole('button', { name: /New task/  }).waitFor();
   assert.equal(page.url(), 'alshitasks://app/index.html');
   const secondary = spawnSync(executablePath, args, { env, encoding: 'utf8', timeout: 10000, killSignal: 'SIGKILL' });
   assert.equal(secondary.status, 0, secondary.stderr);

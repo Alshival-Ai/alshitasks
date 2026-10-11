@@ -289,3 +289,18 @@ td {
     display: none;
   }
 }
+
+.native-navigation-backdrop{display:none}
+@media(max-width:900px){
+ body.native-workspaces .app-mobile-toggle{display:grid;place-items:center;width:38px;height:38px;border:0;background:transparent;flex:none}
+ body.native-workspaces .app-mobile-toggle svg{width:20px;height:20px}
+ body.native-workspaces .native-navigation-backdrop{display:block;position:fixed;inset:0;z-index:1900;background:#0004;border:0}
+ body.native-workspaces .app-sidebar{z-index:2100}
+ body.native-workspaces .app-content{margin-left:0;width:100%;min-width:0}
+ body.native-workspaces .app-header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-height:56px;padding:6px 10px;height:auto}
+ body.native-workspaces .app-header .app-workspace-switcher{flex:1;min-width:0}
+ body.native-workspaces .app-header .workspace-toggle{max-width:100%}
+ body.native-workspaces .app-header .window-chrome{width:auto;margin-left:auto}
+ body.native-workspaces .wd-header-menu .wd-menu-toggle{font-size:12px;padding:6px}
+ body.native-workspaces .window-controls{display:none}
+}

@@ -1,3 +1,4 @@
+import { WorkspaceCog, type Workspace } from "./Workspaces";
 import { Attachments } from "./project-board/Attachments";
 import { StickerPicker } from "./project-board/ResourceSticker";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
@@ -33,14 +34,24 @@ type View = (typeof views)[number];
 export function ProjectsApp({
   storageNamespace,
   workspaceId = LOCAL_WORKSPACE,
+  workspaceName = "Local workspace",
+  workspaceSettings,
   navigationGuard,
   notificationTarget,
 }: {
   notificationTarget?: { id: string; serial: number };
   storageNamespace?: string;
   workspaceId?: string;
+  workspaceName?: string;
+  workspaceSettings?: Workspace;
   navigationGuard?: { current: (() => boolean) | null };
 } = {}) {
+  const canWrite =
+    workspaceId === LOCAL_WORKSPACE ||
+    !!workspaceSettings?.scopes?.includes("project:write");
+  const canCreateTask =
+    canWrite || !!workspaceSettings?.scopes?.includes("tasks:write");
+  const [boardChoice, setBoardChoice] = useState("");
   const api = useMemo(() => workspaceApi(workspaceId), [workspaceId]);
   const [items, setItems] = useState<Item[]>([]),
     [boards, setBoards] = useState<Item[]>([]),
@@ -431,10 +442,10 @@ export function ProjectsApp({
       >
         <header className="sp-heading">
           <div>
-            <h1>
-              {boards.find((board) => board.id === activeBoard)?.data.title ??
-                "Workspace"}
-            </h1>
+            <h1>{workspaceName}</h1>
+            {workspaceSettings && (
+              <WorkspaceCog workspace={workspaceSettings} />
+            )}
           </div>
           <label className="sp-view-select">
             <span className="sr-only">Project view</span>
@@ -461,48 +472,56 @@ export function ProjectsApp({
               <button
                 type="button"
                 className="button btn-frost"
+                data-board-expand
                 onClick={() => setExpanded(!expanded)}
               >
                 {expanded ? "Collapse board" : "Expand board"}
               </button>
             )}
-            <button
-              type="button"
-              className="button btn matrix-btn"
-              onClick={() => begin("task")}
-            >
-              New task +
-            </button>
-            <details className="project-add-menu">
+            {canCreateTask && (
+              <button
+                type="button"
+                className="button btn matrix-btn"
+                onClick={() => begin("task")}
+              >
+                <span className="sp-action-desktop">New task +</span>
+                <span className="sp-action-mobile">+ Task</span>
+              </button>
+            )}
+          </div>
+          {canWrite && (
+            <details className="sp-mobile-overflow sp-has-create-actions">
               <summary
                 className="button btn-frost"
                 aria-label="More board actions"
               >
                 •••
               </summary>
-              <button
-                type="button"
-                className="button btn-frost"
-                onClick={() => begin("deliverable")}
-              >
-                Add deliverable
-              </button>
+              <div className="sp-mobile-overflow-content">
+                <button type="button" onClick={() => begin("deliverable")}>
+                  Add deliverable
+                </button>
+              </div>
             </details>
-          </div>
+          )}
         </header>
-        {boards.length > 0 && (
-          <label className="project-board-picker">
-            Project board
+        <form
+          className="sp-toolbar"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (leaveBoard()) {
+              dirty.current = false;
+              setActiveBoard(boardChoice);
+              setSelected(null);
+              setEditorOpen(false);
+            }
+          }}
+        >
+          <label>
+            Project board{" "}
             <select
-              value={activeBoard}
-              onChange={(event) => {
-                if (leaveBoard()) {
-                  dirty.current = false;
-                  setActiveBoard(event.target.value);
-                  setSelected(null);
-                  setEditorOpen(false);
-                }
-              }}
+              value={boardChoice}
+              onChange={(event) => setBoardChoice(event.target.value)}
             >
               <option value="">Workspace board</option>
               {boards
@@ -514,7 +533,29 @@ export function ProjectsApp({
                 ))}
             </select>
           </label>
-        )}
+          <button className="button" type="submit">
+            Open board
+          </button>
+          {manageStatuses && (
+            <button
+              className="button"
+              type="button"
+              onClick={() => {
+                const panel =
+                  document.querySelector<HTMLDetailsElement>(
+                    ".project-settings",
+                  );
+                if (panel) {
+                  panel.open = true;
+                  panel.scrollIntoView({ block: "start" });
+                  panel.querySelector("summary")?.focus();
+                }
+              }}
+            >
+              Manage boards
+            </button>
+          )}
+        </form>
         <nav className="sp-tabs" aria-label="Project views">
           {views.map((value) => (
             <a

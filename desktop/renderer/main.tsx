@@ -1,3 +1,9 @@
+import {
+  WorkspaceDirectory,
+  WorkspaceList,
+  WorkspaceSwitcher,
+  HeaderMenu,
+} from "./Workspaces";
 import "./theme.js";
 import { Notifications } from "./Notifications";
 import { WindowChrome } from "./WindowChrome";
@@ -6,6 +12,7 @@ import { createRoot } from "react-dom/client";
 import { ProjectsApp } from "./ProjectsApp";
 import type { Item } from "./project-board/types";
 import "./shell.css";
+import "./project-board/portal/workspace-directory.css";
 import { readDeviceState, writeDeviceState } from "./deviceState";
 import { LOCAL_WORKSPACE, selectWorkspace } from "./project-board/api";
 const api = window.tasks.request;
@@ -42,13 +49,17 @@ function App() {
     () => readDeviceState("alshitasks", "sidebar") === true,
   );
   useEffect(() => {
-    document.body.classList.add("alshival-app");
+    document.body.classList.add(
+      "alshival-app",
+      "app-portal",
+      "native-workspaces",
+    );
     document.body.classList.toggle("app-menu-open", expanded);
     writeDeviceState("alshitasks", "sidebar", expanded);
   }, [expanded]);
   const navigationGuard = useRef<(() => boolean) | null>(null);
   const [workspace, setWorkspace] = useState(LOCAL_WORKSPACE);
-  const [workspaceMenu, setWorkspaceMenu] = useState(false);
+
   const [accountInfo, setAccountInfo] = useState<any>({});
   const [localBoards, setLocalBoards] = useState<Item[]>([]);
   const [publications, setPublications] = useState<any[]>([]);
@@ -60,12 +71,17 @@ function App() {
   );
   const [agentConfig, setAgentConfig] = useState("");
   const [grants, setGrants] = useState<any[]>([]);
-  const changeWorkspace = (id: string) => {
-    if (navigationGuard.current && !navigationGuard.current()) return;
+  const [recoveryWorkspace, setRecoveryWorkspace] = useState("");
+  const changeWorkspace = (id: string, recovery = false) => {
+    if (navigationGuard.current && !navigationGuard.current()) return false;
+    setRecoveryWorkspace(recovery ? id : "");
+    setTab("Projects");
+    if (window.innerWidth <= 900) setExpanded(false);
     selectWorkspace(id);
     setWorkspace(id);
-    setWorkspaceMenu(false);
-    writeDeviceState(accountInfo.account?.id || "local", "workspace", id);
+    if (!recovery)
+      writeDeviceState(accountInfo.account?.id || "local", "workspace", id);
+    return true;
   };
   const [tab, setTab] = useState("Projects"),
     [error, setError] = useState(""),
@@ -105,7 +121,9 @@ function App() {
   async function refresh() {
     const all: Item[] = [];
     const visibleWorkspaces = (await api("/v1/workspaces")).workspaces;
-    for (const visibleWorkspace of visibleWorkspaces) {
+    for (const visibleWorkspace of visibleWorkspaces.filter(
+      (w: any) => w.local,
+    )) {
       let next = "";
       do {
         const page = await api(
@@ -141,25 +159,42 @@ function App() {
       unsubscribe();
     };
   }, []);
+  const initializedAccount = useRef<string | null>(null);
+  const [startup, setStartupValue] = useState("directory");
+  const availableWorkspaces = workspaces.filter(
+    (w) => w.local || !["revoked", "disconnected"].includes(w.state),
+  );
+  const showTab = (next: string) => {
+    if (navigationGuard.current && !navigationGuard.current()) return false;
+    setTab(next);
+    setMessage("");
+    return true;
+  };
+  const setStartup = (value: string) => {
+    setStartupValue(value);
+    writeDeviceState(accountInfo.account?.id || "local", "startup", value);
+  };
   useEffect(() => {
-    const saved = readDeviceState(
-      accountInfo.account?.id || "local",
-      "workspace",
+    if (!workspaces.length) return;
+    const account = accountInfo.account?.id || "local";
+    if (initializedAccount.current === account) return;
+    initializedAccount.current = account;
+    const pref =
+      readDeviceState(account, "startup") === "last" ? "last" : "directory";
+    setStartupValue(pref);
+    const saved = readDeviceState(account, "workspace");
+    const target =
+      availableWorkspaces.find((w) => w.id === saved) || availableWorkspaces[0];
+    if (target) {
+      selectWorkspace(target.id);
+      setWorkspace(target.id);
+    }
+    setTab(
+      pref === "directory" && availableWorkspaces.length > 1
+        ? "Workspaces"
+        : "Projects",
     );
-    const id =
-      typeof saved === "string" && workspaces.some((w) => w.id === saved)
-        ? saved
-        : LOCAL_WORKSPACE;
-    selectWorkspace(id);
-    setWorkspace(id);
-  }, [accountInfo.account?.id, workspaces.map((w) => w.id).join(",")]);
-  useEffect(() => {
-    const close = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setWorkspaceMenu(false);
-    };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, []);
+  }, [accountInfo.account?.id, workspaces]);
   useEffect(() => {
     setMemberMapping({});
     if (!publishWorkspace) {
@@ -182,6 +217,23 @@ function App() {
         .then((x) => setAttachments(x.attachments))
         .catch((e) => setError(e.message));
   }, [fileItem]);
+  useEffect(() => {
+    if (
+      workspaces.length &&
+      !(
+        recoveryWorkspace === workspace &&
+        workspaces.some((w) => w.id === workspace)
+      ) &&
+      !availableWorkspaces.some((w) => w.id === workspace)
+    ) {
+      const target = availableWorkspaces[0];
+      if (target) {
+        selectWorkspace(target.id);
+        setWorkspace(target.id);
+        setTab("Workspaces");
+      }
+    }
+  }, [workspaces, workspace, recoveryWorkspace]);
   const publishContacts = [
     ...new Set(
       items
@@ -215,90 +267,92 @@ function App() {
           </button>
         </div>
         <div id="app-menu">
-          <nav aria-label="Application">
-            {["Projects", "Settings"].map((x) => (
-              <a
-                key={x}
-                href={"#" + x.toLowerCase()}
-                title={x}
-                aria-label={x}
-                aria-current={tab === x ? "page" : undefined}
-                onClick={(e) => {
-                  e.preventDefault();
-                  setTab(x);
-                  setMessage("");
-                }}
-              >
-                <span className="app-selection-cube" aria-hidden="true">
-                  {["front", "back", "right", "left", "top", "bottom"].map(
-                    (face) => (
-                      <span
-                        key={face}
-                        className={"app-cube-face app-cube-face--" + face}
-                      />
-                    ),
-                  )}
-                </span>
-                <NavIcon name={x} />
-                <span>{x}</span>
-              </a>
-            ))}
-          </nav>
+          <div className="wd-navigation">
+            <button
+              className="wd-directory-link"
+              onClick={() => showTab("Workspaces")}
+              title="Workspaces"
+            >
+              <span aria-hidden="true">&#9638;</span>
+              <span className="nav-label">Workspaces</span>
+            </button>
+            <WorkspaceList
+              rows={availableWorkspaces}
+              current={tab === "Projects" ? workspace : ""}
+              select={changeWorkspace}
+            />
+          </div>
         </div>
       </aside>
+      {expanded && (
+        <button
+          className="native-navigation-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setExpanded(false)}
+        />
+      )}
       <main className="app-content">
         <header className="app-header">
+          <button
+            className="app-mobile-toggle"
+            aria-label="Open navigation"
+            aria-expanded={expanded}
+            onClick={() => setExpanded(!expanded)}
+          >
+            <NavIcon name="toggle" />
+          </button>
           <a
             className="app-wordmark"
             href="#projects"
             onClick={(e) => {
               e.preventDefault();
-              setTab("Projects");
+              showTab("Workspaces");
             }}
           >
             Alshival.Ai
           </a>
-          <div className="app-workspace-switcher">
+          <WorkspaceSwitcher
+            rows={availableWorkspaces}
+            current={tab === "Projects" ? workspace : ""}
+            select={changeWorkspace}
+            directory={() => showTab("Workspaces")}
+          />
+          <HeaderMenu label="Account">
+            <button onClick={() => showTab("Settings")}>Device settings</button>
             <button
-              className="workspace-toggle"
-              aria-expanded={workspaceMenu}
-              aria-controls="workspace-options"
-              onClick={() => setWorkspaceMenu(!workspaceMenu)}
+              onClick={() =>
+                void window.tasks.external(
+                  new URL(
+                    "/account/settings/",
+                    accountInfo.account?.origin ||
+                      settings.portal_url ||
+                      "https://alshival.ai",
+                  ).href,
+                )
+              }
             >
-              {workspaces.find((w) => w.id === workspace)?.name ||
-                "Local workspace"}
-              <span aria-hidden="true">⌄</span>
+              Account settings
             </button>
-            {workspaceMenu && (
-              <div
-                id="workspace-options"
-                className="workspace-options"
-                role="group"
-                aria-label="Workspaces"
-              >
-                {workspaces.map((w) => (
-                  <button
-                    key={w.id}
-                    aria-pressed={w.id === workspace}
-                    onClick={() => changeWorkspace(w.id)}
-                  >
-                    {w.name}
-                    <small>
-                      {w.local
-                        ? "On this computer"
-                        : w.state !== "connected"
-                          ? w.state
-                          : w.attention
-                            ? "Attention required"
-                            : w.pending
-                              ? "Pending changes"
-                              : w.sync}
-                    </small>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+            <button onClick={() => showTab("Workspaces")}>
+              Startup preferences
+            </button>
+          </HeaderMenu>
+          {!!accountInfo.navigation?.length && (
+            <HeaderMenu label="Administration">
+              {accountInfo.navigation.map((link: any) => (
+                <button
+                  key={link.url}
+                  onClick={() =>
+                    void window.tasks.external(
+                      new URL(link.url, accountInfo.account.origin).href,
+                    )
+                  }
+                >
+                  {link.label}
+                </button>
+              ))}
+            </HeaderMenu>
+          )}
           <span className="local-label">
             {settings.paused
               ? "Background paused"
@@ -330,11 +384,65 @@ function App() {
             {message}
           </p>
         )}
-        <div className={tab === "Projects" ? "projects-frame" : "page"}>
+        <div
+          className={
+            tab === "Projects"
+              ? "projects-frame"
+              : tab === "Workspaces"
+                ? "workspace-frame"
+                : "page"
+          }
+        >
+          {tab === "Settings" &&
+            workspaces.some(
+              (w) => !w.local && ["revoked", "disconnected"].includes(w.state),
+            ) && (
+              <section className="panel">
+                <h2>Retained workspace copies</h2>
+                <p>
+                  Access has ended or the account is disconnected. Local copies
+                  and drafts remain available for recovery.
+                </p>
+                {workspaces
+                  .filter(
+                    (w) =>
+                      !w.local && ["revoked", "disconnected"].includes(w.state),
+                  )
+                  .map((w) => (
+                    <button
+                      key={w.id}
+                      onClick={() => changeWorkspace(w.id, true)}
+                    >
+                      Open retained copy: {w.name}
+                    </button>
+                  ))}
+              </section>
+            )}
+          {!!recoveryWorkspace && tab === "Projects" && (
+            <p role="status">
+              Retained local copy. Workspace access is{" "}
+              {workspaces.find((w) => w.id === workspace)?.state};
+              synchronization is disabled.
+            </p>
+          )}
+          {tab === "Workspaces" && (
+            <WorkspaceDirectory
+              rows={availableWorkspaces}
+              current={workspace}
+              select={changeWorkspace}
+              startup={startup}
+              setStartup={setStartup}
+            />
+          )}
           {tab === "Projects" && (
             <ProjectsApp
               key={workspace}
               workspaceId={workspace}
+              workspaceName={
+                workspaces.find((w) => w.id === workspace)?.name ||
+                "Local workspace"
+              }
+              workspaceSettings={workspaces.find((w) => w.id === workspace)}
               notificationTarget={notificationTarget}
               navigationGuard={navigationGuard}
               storageNamespace={
