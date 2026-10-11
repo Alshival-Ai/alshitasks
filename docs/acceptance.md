@@ -98,11 +98,14 @@ Artifact SHA-256: `d296818ab6ae01d1da7f4fa057057a884077a492196687b2a3f24f44b1146
 ## Unreleased graph sync, attachments and local SSH
 
 Source validation on 2026-10-10/11: 64 isolated desktop service tests pass;
-TypeScript/Vite build and source Electron editing/navigation checks pass. The portal
+TypeScript/Vite build and source Electron editing/navigation checks pass,
+including creating and removing an SSH-agent configuration in an isolated home. The portal
 regression suite passed 54 tests with one skipped, including two isolated desktop
 profiles converging through the real portal adapter, consistent pagination, file
 transfer/replacement/deletion, access revocation and unchanged Neural Labs projection
-regressions. Additional transfer-expiry validation is recorded after the final run.
+regressions. The focused transfer lifecycle/expiry rerun also passes, including cleanup of
+expired chunks and reservations. Scanner timeout and missing-executable checks
+confirm that unavailable scanning cannot publish bytes.
 
 New tests cover exact retries after lost replies, independent-field conflict review,
 resumed downloads, graph mention translation, cross-board relationships, capability
