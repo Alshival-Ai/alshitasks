@@ -1,0 +1,111 @@
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "service"))
+from alshitasks.store import Store, uid, Problem
+from alshitasks.paths import Paths
+from alshitasks.api import API
+from alshitasks.workspaces import LOCAL, scope
+from alshitasks.accounts import activate, discover, signout
+
+
+class Workspaces(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.s = Store(Paths(self.temp.name))
+        self.api = API(self.s, None)
+        self.account = uid()
+        with self.s.tx():
+            self.s.db.execute(
+                "INSERT INTO connections VALUES(?,?,?,?,?,?,?)",
+                (self.account, "https://alshival.ai", "7", "", "connected", None, "{}"),
+            )
+            activate(self.s, self.account, {"account_id": "7"})
+        self.remote = [
+            {"id": uid(), "name": "Shared", "scopes": ["project:read", "tasks:write"]} for _ in range(2)
+        ]
+        self.discover()
+        self.ids = [r[0] for r in self.s.db.execute("SELECT id FROM connections WHERE workspace!=''")]
+
+    def tearDown(self):
+        self.s.db.close()
+        self.temp.cleanup()
+
+    def discover(self):
+        with self.s.tx():
+            self.s.set_setting("discovery", {"next": 0})
+        with patch("alshitasks.portal.Portal.token", return_value="fixture"):
+            discover(self.s, lambda *a: {"workspaces": self.remote})
+
+    def create(self, workspace, title="Board"):
+        with self.s.tx(), scope(self.s, workspace):
+            return self.s.create({"kind": "board", "data": {"title": title}, "idempotency_key": uid()})
+
+    def test_workspace_reads_and_mutations_are_scoped_before_pagination(self):
+        local = self.create(LOCAL)
+        a, b = [self.create(w) for w in self.ids]
+        with self.s.tx():
+            rows = self.api.dispatch("/v1/projects/items?workspace_id=" + self.ids[0], owner=True)
+            self.assertEqual([r["id"] for r in rows["items"]], [a["id"]])
+            for ident in (local["id"], b["id"]):
+                with self.assertRaises(Problem):
+                    self.api.dispatch(
+                        "/v1/projects/items/" + ident + "?workspace_id=" + self.ids[0], owner=True
+                    )
+                with self.assertRaises(Problem):
+                    self.api.tool(
+                        "project_update",
+                        {
+                            "workspace_id": self.ids[0],
+                            "id": ident,
+                            "revision": 1,
+                            "data": {"title": "No"},
+                            "idempotency_key": uid(),
+                        },
+                        owner=True,
+                    )
+            self.assertEqual(len(self.api.tool("workspace_list", {}, owner=True)["workspaces"]), 3)
+            self.assertEqual(
+                len(self.api.tool("project_boards", {"workspace_id": LOCAL}, owner=True)["items"]), 1
+            )
+
+    def test_discovery_idempotent_new_access_revocation_and_network_failure(self):
+        self.discover()
+        self.assertEqual(
+            len(self.s.db.execute("SELECT * FROM connections WHERE workspace!=''").fetchall()), 2
+        )
+        self.remote.pop()
+        self.discover()
+        self.assertEqual(
+            self.s.db.execute("SELECT COUNT(*) FROM connections WHERE state='revoked'").fetchone()[0], 1
+        )
+        with self.s.tx():
+            self.s.set_setting("discovery", {"next": 0})
+        with patch("alshitasks.portal.Portal.token", return_value="fixture"):
+
+            def fail(*a):
+                raise Problem("Offline", 503)
+
+            discover(self.s, fail)
+        self.assertEqual(
+            self.s.db.execute("SELECT COUNT(*) FROM connections WHERE state='revoked'").fetchone()[0], 1
+        )
+        self.assertEqual(self.s.setting("discovery")["state"], "offline")
+
+    def test_signout_retains_data_and_relogin_identity(self):
+        board = self.create(self.ids[0])
+        with self.s.tx(), patch("alshitasks.accounts.Secrets.delete"):
+            signout(self.s)
+        self.assertEqual(self.s.item(board["id"])["data"]["title"], "Board")
+        self.assertIsNone(self.s.setting("active_account"))
+        with self.s.tx():
+            self.s.db.execute("UPDATE connections SET state='connected' WHERE id=?", (self.account,))
+            activate(self.s, self.account, {"account_id": "7"})
+        self.discover()
+        self.assertEqual(
+            self.s.db.execute("SELECT connection FROM items WHERE id=?", (board["id"],)).fetchone()[0],
+            self.ids[0],
+        )

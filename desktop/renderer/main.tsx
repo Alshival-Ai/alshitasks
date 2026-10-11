@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { ProjectsApp } from "./ProjectsApp";
 import type { Item } from "./project-board/types";
 import "./shell.css";
 import { readDeviceState, writeDeviceState } from "./deviceState";
+import { LOCAL_WORKSPACE, selectWorkspace } from "./project-board/api";
 const api = window.tasks.request;
 function NavIcon({ name }: { name: string }) {
   return (
@@ -42,14 +43,33 @@ function App() {
     document.body.classList.toggle("app-menu-open", expanded);
     writeDeviceState("alshitasks", "sidebar", expanded);
   }, [expanded]);
+  const navigationGuard = useRef<(() => boolean) | null>(null);
+  const [workspace, setWorkspace] = useState(LOCAL_WORKSPACE);
+  const [workspaceMenu, setWorkspaceMenu] = useState(false);
+  const [accountInfo, setAccountInfo] = useState<any>({});
+  const [localBoards, setLocalBoards] = useState<Item[]>([]);
+  const [publications, setPublications] = useState<any[]>([]);
+  const [publishBoard, setPublishBoard] = useState(LOCAL_WORKSPACE);
+  const [publishWorkspace, setPublishWorkspace] = useState("");
+  const [publishMembers, setPublishMembers] = useState<any[]>([]);
+  const [memberMapping, setMemberMapping] = useState<Record<string, string>>(
+    {},
+  );
+  const [agentConfig, setAgentConfig] = useState("");
+  const [grants, setGrants] = useState<any[]>([]);
+  const changeWorkspace = (id: string) => {
+    if (navigationGuard.current && !navigationGuard.current()) return;
+    selectWorkspace(id);
+    setWorkspace(id);
+    setWorkspaceMenu(false);
+    writeDeviceState(accountInfo.account?.id || "local", "workspace", id);
+  };
   const [tab, setTab] = useState("Projects"),
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [items, setItems] = useState<Item[]>([]),
     [settings, setSettings] = useState<any>({}),
-    [connections, setConnections] = useState<any[]>([]),
     [workspaces, setWorkspaces] = useState<any[]>([]),
-    [selectedConnection, setConnection] = useState(""),
     [conflicts, setConflicts] = useState<any[]>([]),
     [drafts, setDrafts] = useState<any[]>([]),
     [attachments, setAttachments] = useState<any[]>([]),
@@ -59,6 +79,7 @@ function App() {
     try {
       const v = await fn();
       setMessage(v?.message ?? "Saved");
+      await refresh();
       return v;
     } catch (e) {
       setError((e as Error).message);
@@ -66,17 +87,30 @@ function App() {
   };
   async function refresh() {
     const all: Item[] = [];
-    let next = "";
-    do {
-      const page = await api(
-        "/v1/projects/items?after=" + encodeURIComponent(next),
-      );
-      all.push(...page.items);
-      next = page.next ?? "";
-    } while (next);
+    const visibleWorkspaces = (await api("/v1/workspaces")).workspaces;
+    for (const visibleWorkspace of visibleWorkspaces) {
+      let next = "";
+      do {
+        const page = await api(
+          "/v1/projects/items?workspace_id=" +
+            visibleWorkspace.id +
+            "&after=" +
+            encodeURIComponent(next),
+        );
+        all.push(...page.items);
+        next = page.next ?? "";
+      } while (next);
+    }
     setItems(all);
     setSettings(await api("/v1/settings"));
-    setConnections((await api("/v1/portal/connections")).connections);
+    const info = await api("/v1/portal/account");
+    setAccountInfo(info);
+    setLocalBoards(
+      (await api("/v1/projects/boards?workspace_id=" + LOCAL_WORKSPACE)).boards,
+    );
+    setPublications((await api("/v1/portal/publish")).publications);
+    setWorkspaces(visibleWorkspaces);
+    setGrants((await api("/v1/projects/keys")).keys);
     setConflicts((await api("/v1/conflicts")).conflicts);
     setDrafts((await api("/v1/drafts")).drafts);
   }
@@ -86,11 +120,58 @@ function App() {
     return () => clearInterval(t);
   }, []);
   useEffect(() => {
+    const saved = readDeviceState(
+      accountInfo.account?.id || "local",
+      "workspace",
+    );
+    const id =
+      typeof saved === "string" && workspaces.some((w) => w.id === saved)
+        ? saved
+        : LOCAL_WORKSPACE;
+    selectWorkspace(id);
+    setWorkspace(id);
+  }, [accountInfo.account?.id, workspaces.map((w) => w.id).join(",")]);
+  useEffect(() => {
+    const close = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setWorkspaceMenu(false);
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, []);
+  useEffect(() => {
+    setMemberMapping({});
+    if (!publishWorkspace) {
+      setPublishMembers([]);
+      return;
+    }
+    let active = true;
+    void api("/v1/projects/members?workspace_id=" + publishWorkspace)
+      .then((x) => {
+        if (active) setPublishMembers(x.members);
+      })
+      .catch((e) => setError(e.message));
+    return () => {
+      active = false;
+    };
+  }, [publishWorkspace]);
+  useEffect(() => {
     if (fileItem)
       void api("/v1/attachments?item_id=" + fileItem)
         .then((x) => setAttachments(x.attachments))
         .catch((e) => setError(e.message));
   }, [fileItem]);
+  const publishContacts = [
+    ...new Set(
+      items
+        .filter((i) =>
+          publishBoard === LOCAL_WORKSPACE
+            ? !i.data.board_id && i.kind !== "board"
+            : i.data.board_id === publishBoard,
+        )
+        .flatMap((i) => [i.data.assignee, i.data.reviewer])
+        .filter(Boolean),
+    ),
+  ] as string[];
   const data = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     return Object.fromEntries(new FormData(e.currentTarget));
@@ -155,15 +236,64 @@ function App() {
           >
             Alshival.Ai
           </a>
-          <span className="app-header-context">{tab}</span>
+          <div className="app-workspace-switcher">
+            <button
+              className="workspace-toggle"
+              aria-expanded={workspaceMenu}
+              aria-controls="workspace-options"
+              onClick={() => setWorkspaceMenu(!workspaceMenu)}
+            >
+              {workspaces.find((w) => w.id === workspace)?.name ||
+                "Local workspace"}
+              <span aria-hidden="true">⌄</span>
+            </button>
+            {workspaceMenu && (
+              <div
+                id="workspace-options"
+                className="workspace-options"
+                role="group"
+                aria-label="Workspaces"
+              >
+                {workspaces.map((w) => (
+                  <button
+                    key={w.id}
+                    aria-pressed={w.id === workspace}
+                    onClick={() => changeWorkspace(w.id)}
+                  >
+                    {w.name}
+                    <small>
+                      {w.local
+                        ? "On this computer"
+                        : w.state !== "connected"
+                          ? w.state
+                          : w.attention
+                            ? "Attention required"
+                            : w.pending
+                              ? "Pending changes"
+                              : w.sync}
+                    </small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="local-label">
             {settings.paused
               ? "Background paused"
-              : connections.some((c) =>
-                    ["disconnected", "revoked"].includes(c.state),
-                  )
-                ? "Local · disconnected cache retained"
-                : "Local workspace"}
+              : workspace === LOCAL_WORKSPACE
+                ? "On this computer"
+                : (() => {
+                    const w = workspaces.find((w) => w.id === workspace);
+                    return w?.state !== "connected"
+                      ? "Offline copy"
+                      : w?.attention
+                        ? "Attention required"
+                        : w?.pending
+                          ? "Pending changes"
+                          : w?.sync === "up-to-date"
+                            ? "Up to date"
+                            : w?.sync || "Waiting to sync";
+                  })()}
           </span>
         </header>
         {error && (
@@ -178,86 +308,205 @@ function App() {
         )}
         <div className={tab === "Projects" ? "projects-frame" : "page"}>
           {tab === "Projects" && (
-            <ProjectsApp storageNamespace="alshitasks.local" />
+            <ProjectsApp
+              key={workspace}
+              workspaceId={workspace}
+              navigationGuard={navigationGuard}
+              storageNamespace={
+                "alshitasks." +
+                (accountInfo.account?.id || "local") +
+                "." +
+                workspace
+              }
+            />
           )}
           {tab === "Settings" && (
             <>
               <h1>Settings</h1>
               <section aria-labelledby="connections-heading">
-                <h2 id="connections-heading">Connections</h2>
-                <p>
-                  Local boards stay local. Select a workspace to download;
-                  existing local boards are never uploaded automatically.
-                </p>
-                <form
-                  onSubmit={(e) => {
-                    const f = data(e);
-                    void work(() => window.tasks.connect(String(f.origin)));
-                  }}
-                >
-                  <label>
-                    Portal URL
-                    <input
-                      name="origin"
-                      type="url"
-                      defaultValue={
-                        settings.portal_url || "https://alshival.ai"
-                      }
-                      required
-                    />
-                  </label>
-                  <button>Connect in browser</button>
-                </form>
-                {connections.map((c) => (
-                  <section key={c.id}>
-                    <h2>{c.origin}</h2>
+                <h2 id="connections-heading">Alshival.Ai account</h2>
+                {!accountInfo.account ? (
+                  <>
                     <p>
-                      {c.state} · {c.workspace || "Choose a workspace"}
+                      Work locally without an account, or sign in to sync your
+                      Alshival.Ai workspaces.
+                    </p>
+                    <button
+                      onClick={() => void work(() => window.tasks.connect())}
+                    >
+                      Sign in with Alshival.Ai
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      {accountInfo.account.name} ·{" "}
+                      {accountInfo.status?.state || "Connecting"}
                     </p>
                     <button
                       onClick={() =>
-                        void work(async () => {
-                          setConnection(c.id);
-                          setWorkspaces(
-                            (
-                              await api(
-                                "/v1/portal/workspaces?connection=" + c.id,
-                              )
-                            ).workspaces,
-                          );
-                        })
+                        void work(() => api("/v1/portal/retry", "POST", {}))
                       }
                     >
-                      Choose workspace
+                      Sync now
                     </button>
                     <button
                       onClick={() =>
-                        void work(() =>
-                          api("/v1/portal/disconnect", "POST", {
-                            connection: c.id,
-                          }),
-                        )
+                        void work(() => api("/v1/portal/signout", "POST", {}))
                       }
                     >
-                      Disconnect
+                      Sign out
                     </button>
+                    <p>
+                      All authorized workspaces sync automatically. Local boards
+                      stay on this computer until you publish them.
+                    </p>
+                  </>
+                )}
+                {accountInfo.status?.error && (
+                  <p role="status">{accountInfo.status.error}</p>
+                )}
+                {accountInfo.account && (
+                  <section aria-labelledby="publish-heading">
+                    <h3 id="publish-heading">Publish local boards</h3>
+                    <p>
+                      Each selected local board becomes a separate synced board.
+                      Its contents and attachments will be shared with the
+                      destination workspace’s members.
+                    </p>
+                    {accountInfo.offer_publish && (
+                      <button
+                        onClick={() =>
+                          void work(() =>
+                            api("/v1/portal/publish-offer", "POST", {}),
+                          )
+                        }
+                      >
+                        Skip for now
+                      </button>
+                    )}
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void work(() =>
+                          api("/v1/portal/publish", "POST", {
+                            board_id: publishBoard,
+                            workspace_id: publishWorkspace,
+                            members: Object.fromEntries(
+                              Object.entries(memberMapping).map(([k, v]) => [
+                                k,
+                                v === "unassigned" ? null : v,
+                              ]),
+                            ),
+                          }),
+                        );
+                      }}
+                    >
+                      <label>
+                        Local board
+                        <select
+                          value={publishBoard}
+                          onChange={(e) => {
+                            setPublishBoard(e.target.value);
+                            setMemberMapping({});
+                          }}
+                        >
+                          <option value={LOCAL_WORKSPACE}>
+                            Local workspace board
+                          </option>
+                          {localBoards
+                            .filter((b) => !b.data.deleted && !b.data.archived)
+                            .map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.data.title}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        Destination workspace
+                        <select
+                          required
+                          value={publishWorkspace}
+                          onChange={(e) => setPublishWorkspace(e.target.value)}
+                        >
+                          <option value="">Choose workspace</option>
+                          {workspaces
+                            .filter(
+                              (w) =>
+                                !w.local &&
+                                w.state === "connected" &&
+                                w.scopes.some((s: string) =>
+                                  ["board:write", "project:write"].includes(s),
+                                ),
+                            )
+                            .map((w) => (
+                              <option key={w.id} value={w.id}>
+                                {w.name}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      {publishContacts.map((id) => (
+                        <label key={id}>
+                          Map{" "}
+                          {id === "local"
+                            ? "Me"
+                            : settings.local_members?.find(
+                                (m: any) => m.id === id,
+                              )?.name || id}
+                          <select
+                            required
+                            value={memberMapping[id] || ""}
+                            onChange={(e) =>
+                              setMemberMapping({
+                                ...memberMapping,
+                                [id]: e.target.value,
+                              })
+                            }
+                          >
+                            <option value="">Choose member</option>
+                            <option value="unassigned">Leave unassigned</option>
+                            {publishMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.display_name || m.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      ))}
+                      <button disabled={!publishWorkspace}>
+                        Publish board
+                      </button>
+                    </form>
                   </section>
-                ))}
-                {workspaces.map((w) => (
-                  <p key={w.id}>
-                    {w.name}
-                    <button
-                      onClick={() =>
-                        void work(() =>
-                          api("/v1/portal/select", "POST", {
-                            connection: selectedConnection,
-                            workspace: w.id,
-                          }),
-                        )
-                      }
-                    >
-                      Cache workspace
-                    </button>
+                )}
+                {publications.map((j) => (
+                  <p key={j.id}>
+                    Board publication: {j.state}
+                    {j.error && <> · {j.error}</>}
+                    {["queued", "rejected"].includes(j.state) && (
+                      <button
+                        onClick={() =>
+                          void work(() =>
+                            api("/v1/portal/publish", "POST", { cancel: j.id }),
+                          )
+                        }
+                      >
+                        Cancel publication
+                      </button>
+                    )}
+                    {j.state === "rejected" && (
+                      <button
+                        onClick={() =>
+                          void work(() =>
+                            api("/v1/portal/publish", "POST", { retry: j.id }),
+                          )
+                        }
+                      >
+                        Retry publication
+                      </button>
+                    )}
                   </p>
                 ))}
                 <h3>Local drafts</h3>
@@ -315,7 +564,7 @@ function App() {
                   </section>
                 ))}
                 <p>
-                  Disconnect stops remote activity. Retained offline copies are
+                  Signing out stops synchronization. Retained offline copies are
                   marked disconnected and cannot be remotely guaranteed erased.
                 </p>
               </section>
@@ -323,6 +572,61 @@ function App() {
           )}
           {tab === "Settings" && (
             <>
+              <section>
+                <h2>Agent access</h2>
+                <p>
+                  The bundled MCP server works locally without an Alshival.Ai
+                  account.
+                </p>
+                <pre>
+                  {JSON.stringify(
+                    {
+                      mcpServers: {
+                        alshitasks: { command: "alshitasks", args: ["mcp"] },
+                      },
+                    },
+                    null,
+                    2,
+                  )}
+                </pre>
+                <button
+                  onClick={() =>
+                    void work(async () => {
+                      const result = await api("/v1/agent-grants", "POST", {
+                        name: "Desktop agent",
+                        scopes: ["project:read", "project:write"],
+                      });
+                      setAgentConfig(JSON.stringify(result.config, null, 2));
+                    })
+                  }
+                >
+                  Create read/write agent grant
+                </button>
+                {agentConfig && (
+                  <textarea
+                    aria-label="Agent MCP configuration"
+                    readOnly
+                    value={agentConfig}
+                    rows={10}
+                  />
+                )}
+                {grants
+                  .filter((g) => !g.revoked_at)
+                  .map((g) => (
+                    <p key={g.id}>
+                      {g.name}{" "}
+                      <button
+                        onClick={() =>
+                          void work(() =>
+                            api("/v1/projects/keys/" + g.id, "DELETE"),
+                          )
+                        }
+                      >
+                        Revoke {g.name}
+                      </button>
+                    </p>
+                  ))}
+              </section>
               <section>
                 <h2>Local assignees</h2>
                 <form

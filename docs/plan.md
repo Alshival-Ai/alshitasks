@@ -4,7 +4,7 @@
 
 Build **Alshival Tasks** in the existing empty public repository https://github.com/Alshival-Ai/alshitasks, licensed Apache-2.0.
 
-The app works independently without an Alshival account: installation and first launch provision its local database, task boards, resources, and background service. An optional connection synchronizes selected workspaces with alshival.ai. Our team installation supplies the portal URL; users authenticate individually.
+The app works independently without an Alshival account: installation and first launch provision its local database, task boards, resources, and background service. Optional Alshival.Ai sign-in discovers every authorized workspace. Workspace and board identities stay separate; publishing a local board is an explicit action.
 
 This document is a plan, not an implementation or deployment record.
 
@@ -57,7 +57,7 @@ This document is a plan, not an implementation or deployment record.
 - Extend the portal's existing OAuth infrastructure with a **desktop API audience** and appropriate scopes. Existing workspace-MCP tokens must not automatically authorize the new API.
 - Add a versioned desktop integration API providing capabilities, authorized workspace discovery, paginated snapshots/change cursors, revision-checked mutations, resource operations, and permitted log/monitoring reads.
 - Reuse portal service-layer authorization and workspace permissions. The new adapter must not copy the managed Neural Labs sync principal or grant desktop users server-level authority.
-- Let users select workspaces to cache. Keep standalone boards separate; connecting an account never uploads existing local boards automatically.
+- Automatically discover and cache every authorized workspace; preserve a separate Local workspace. Keep standalone boards separate; connecting an account never uploads existing local boards automatically.
 - Store offline edits in a transactional outbox with stable IDs, observed revisions, and idempotency keys. Replay after authentication and permission checks.
 - Merge non-overlapping changes automatically. Retain both versions of conflicting edits and present a resolution queue; do not use desktop clock timestamps to silently overwrite shared work.
 - Handle deletion through tombstones. Missing records or incomplete pages never mean deletion.

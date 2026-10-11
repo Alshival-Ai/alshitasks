@@ -4,7 +4,7 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     request: (path, method = "GET", body) =>
       ipcRenderer.invoke("tasks:request", path, method, body),
-    connect: (origin) => ipcRenderer.invoke("tasks:connect", origin),
+    connect: () => ipcRenderer.invoke("tasks:connect"),
     importAttachment: (item) => ipcRenderer.invoke("tasks:import", item),
     saveAttachment: (id) => ipcRenderer.invoke("tasks:save-attachment", id),
     backup: () => ipcRenderer.invoke("tasks:backup"),

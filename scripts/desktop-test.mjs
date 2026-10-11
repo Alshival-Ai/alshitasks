@@ -18,6 +18,7 @@ try {
     timeout: 30000,
   });
   const page = await app.firstWindow();
+  page.setDefaultTimeout(15000);
   const errors = [];
   page.on("dialog", async (dialog) => {
     console.log("Fixture dialog:", dialog.message());
@@ -150,10 +151,10 @@ try {
   await nav.getByRole("link", { name: "Settings", exact: true }).click();
   await page.getByRole("heading", { name: "Settings", exact: true }).waitFor();
   await page
-    .getByRole("heading", { name: "Connections", exact: true })
+    .getByRole("heading", { name: "Alshival.Ai account", exact: true })
     .waitFor();
   await page
-    .getByRole("button", { name: "Connect in browser", exact: true })
+    .getByRole("button", { name: "Sign in with Alshival.Ai", exact: true })
     .waitFor();
   await page
     .getByRole("button", { name: "Collapse menu", exact: true })
@@ -183,6 +184,52 @@ try {
     fullPage: true,
     animations: "disabled",
   });
+  execFileSync("/usr/bin/python3", [
+    "-c",
+    `
+import sys,json
+sys.path.insert(0,sys.argv[1])
+from alshitasks.store import Store,uid
+from alshitasks.paths import Paths
+s=Store(Paths(sys.argv[2]))
+with s.tx():
+ s.set_setting('last_account',{'id':'fixture','origin':'https://alshival.ai'})
+ for name in ('Workspace A','Workspace B'):
+  c=uid()
+  s.db.execute('INSERT INTO connections VALUES(?,?,?,?,?,?,?)',(c,'https://alshival.ai','fixture',uid(),'disconnected',None,'{}'))
+  s.set_setting('workspace:'+c,{'name':name,'scopes':['project:read']})
+  board=s.create({'kind':'board','data':{'title':name+' board'},'idempotency_key':uid()})
+  task=s.create({'kind':'task','data':{'title':name+' task','board_id':board['id'],'status_id':next(x['id'] for x in s.statuses() if x.get('board_id')==board['id'] and x['legacy_state']=='todo')},'idempotency_key':uid()})
+  s.db.execute('UPDATE items SET connection=? WHERE id IN (?,?)',(c,board['id'],task['id']))
+s.db.close()
+`,
+    path.join(process.env.ALSHITASKS_TEST_APP || path.resolve("."), "service"),
+    root,
+  ]);
+  await page.reload();
+  await page.locator(".workspace-toggle").click();
+  await page
+    .getByRole("group", { name: "Workspaces", exact: true })
+    .getByRole("button", { name: /Workspace A/ })
+    .click();
+  await nav.getByRole("link", { name: "Projects", exact: true }).click();
+  await page.getByText("Workspace A task", { exact: true }).first().waitFor();
+  assert.equal(
+    await page.getByText("Workspace B task", { exact: true }).count(),
+    0,
+  );
+  await page.locator(".workspace-toggle").click();
+  await page
+    .getByRole("group", { name: "Workspaces", exact: true })
+    .getByRole("button", { name: /Workspace B/ })
+    .click();
+  await page.getByText("Workspace B task", { exact: true }).first().waitFor();
+  assert.equal(
+    await page.getByText("Workspace A task", { exact: true }).count(),
+    0,
+  );
+  await page.reload();
+  await page.getByText("Workspace B task", { exact: true }).first().waitFor();
   assert.deepEqual(errors, []);
   console.log(
     "Electron: offline task/note/resource editing, project views, Trash restore, all application tabs, sandbox preferences and rendering passed.",

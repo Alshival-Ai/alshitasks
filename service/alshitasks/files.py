@@ -15,6 +15,9 @@ MAX_RESTORE = 64 * 1024**3
 
 def attach(store, item_id, name, content):
     store.item(item_id)
+    from .workspaces import writable
+
+    writable(store, item_id)
     if not isinstance(name, str) or not name or len(name) > 255:
         raise Problem("Invalid attachment name")
     try:

@@ -1,7 +1,7 @@
 {
   "name": "alshitasks",
   "productName": "Alshival.Ai",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Local-first Linux task boards, resources and monitoring",
   "license": "Apache-2.0",
   "type": "module",

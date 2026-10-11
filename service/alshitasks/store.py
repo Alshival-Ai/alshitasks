@@ -52,6 +52,8 @@ class Store:
     def __init__(self, paths):
         self.paths = paths
         self.lock = threading.RLock()
+        self.workspace = None
+        self.sync_lock = threading.Lock()
         self.db = sqlite3.connect(paths.data / "projects.sqlite", check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -59,6 +61,10 @@ class Store:
         self.db.execute("PRAGMA busy_timeout=5000")
         try:
             self.migrate()
+            from .accounts import adopt_legacy
+
+            with self.tx():
+                adopt_legacy(self)
         except BaseException:
             self.db.close()
             raise
@@ -143,19 +149,27 @@ class Store:
         }
 
     def item(self, item_id):
+        from .workspaces import require_item
+
+        require_item(self, item_id)
         return self.row(self.db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone())
 
     def list(self, after="", kind=None, limit=100, board=None):
         if not isinstance(limit, int) or not 1 <= limit <= 100:
             raise Problem("limit must be 1..100")
+        from .workspaces import LOCAL
+
+        workspace = self.workspace
         rows = self.db.execute(
-            "SELECT * FROM items WHERE id>? AND (? IS NULL OR kind=?) ORDER BY id LIMIT ?",
-            (after, kind, kind, limit + 1),
+            "SELECT * FROM items WHERE id>? AND (? IS NULL OR kind=?) "
+            "AND (? IS NULL OR (?=? AND connection IS NULL) OR connection=?) "
+            "AND (? IS NULL OR json_extract(data,'$.board_id')=?) ORDER BY id LIMIT ?",
+            (after, kind, kind, workspace, workspace, LOCAL, workspace, board, board, limit + 1),
         ).fetchall()
-        items = [self.row(r) for r in rows[:limit]]
-        if board is not None:
-            items = [r for r in items if r["data"].get("board_id") == board]
-        return dict(items=items, next=rows[limit - 1]["id"] if len(rows) > limit else None)
+        return dict(
+            items=[self.row(r) for r in rows[:limit]],
+            next=rows[limit - 1]["id"] if len(rows) > limit else None,
+        )
 
     def validate(self, kind, data, item_id=None):
         if kind not in KINDS or not isinstance(data, dict) or set(data) - set(DEFAULT):
@@ -187,7 +201,14 @@ class Store:
             or any(not isinstance(k, str) or not isinstance(v, str) for k, v in data["details"].items())
         ):
             raise Problem("Invalid details")
+        if item_id and self.db.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone():
+            from .workspaces import writable
+
+            writable(self, item_id)
         if data.get("board_id"):
+            from .workspaces import writable
+
+            writable(self, data["board_id"])
             b = self.item(data["board_id"])
             if b["kind"] != "board" or b["data"]["deleted"]:
                 raise Problem("Board unavailable")
@@ -217,6 +238,8 @@ class Store:
         if not isinstance(key, str) or not 1 <= len(key) <= 128:
             raise Problem("idempotency_key required")
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        if self.workspace:
+            key = self.workspace + ":" + key
         row = self.db.execute("SELECT * FROM replay WHERE key=?", (key,)).fetchone()
         if row:
             if row["digest"] != digest:
@@ -252,6 +275,14 @@ class Store:
                 raise Problem("Invalid record identity")
             data = dict(DEFAULT, **body.get("data", {}))
             kind = body.get("kind")
+            from .workspaces import LOCAL
+
+            if (
+                not data.get("board_id")
+                and self.workspace in (None, LOCAL)
+                and self.setting("publishing:" + LOCAL)
+            ):
+                raise Problem("Local workspace publication is in progress", 409)
             self.validate(kind, data, item_id)
             stamp = now()
             try:
@@ -275,6 +306,12 @@ class Store:
                 if parent
                 else None
             )
+            from .workspaces import LOCAL
+
+            if not connection and self.workspace and self.workspace != LOCAL:
+                if kind != "board":
+                    raise Problem("Choose a board in this workspace")
+                connection = {"connection": self.workspace}
             if connection and connection["connection"]:
                 self.db.execute(
                     "UPDATE items SET connection=? WHERE id=?", (connection["connection"], item_id)
@@ -354,13 +391,25 @@ class Store:
         return self.update(item_id, dict(body, data=flags[action], restoring=action == "restore"))
 
     def edges(self):
+        from .workspaces import visible
+
         return [
             dict(x)
-            for x in self.db.execute("SELECT id,source_id,target_id,kind,revision FROM edges WHERE deleted=0")
+            for x in self.db.execute(
+                "SELECT e.id,source_id,target_id,e.kind,e.revision FROM edges e JOIN items i ON i.id=e.source_id WHERE e.deleted=0"
+            )
+            if visible(
+                self,
+                self.db.execute("SELECT connection FROM items WHERE id=?", (x["source_id"],)).fetchone()[0],
+            )
         ]
 
     def edge_create(self, body):
         def apply():
+            from .workspaces import writable
+
+            writable(self, body.get("source_id"))
+            writable(self, body.get("target_id"))
             source = self.item(body.get("source_id"))
             target = self.item(body.get("target_id"))
             kind = body.get("kind")
@@ -422,6 +471,12 @@ class Store:
         row = self.db.execute("SELECT * FROM edges WHERE id=? AND deleted=0", (edge_id,)).fetchone()
         if not row:
             raise Problem("Relationship unavailable", 404)
+        from .workspaces import writable
+
+        writable(self, row["source_id"])
+        writable(self, row["target_id"])
+        self.item(row["source_id"])
+        self.item(row["target_id"])
         if row["revision"] != revision:
             raise Problem("Relationship changed", 409)
         self.db.execute("UPDATE edges SET deleted=1,revision=revision+1 WHERE id=?", (edge_id,))
@@ -443,17 +498,41 @@ class Store:
         return None
 
     def statuses(self):
+        from .workspaces import visible
+
+        def allowed(data):
+            board = json.loads(data).get("board_id")
+            row = (
+                self.db.execute("SELECT connection FROM items WHERE id=?", (board,)).fetchone()
+                if board
+                else None
+            )
+            return visible(self, row[0] if row else None)
+
         return [
             dict(json.loads(r["data"]), id=r["id"], revision=r["revision"])
             for r in self.db.execute("SELECT * FROM statuses")
+            if allowed(r["data"])
         ]
 
     def status_save(self, body):
+        from .workspaces import LOCAL
+
         data = body.get("data", {})
+        if self.workspace not in (None, LOCAL) and not data.get("board_id"):
+            raise Problem("Choose a board in this workspace")
         ident = body.get("id") or uid()
         if not isinstance(data, dict) or not data.get("name") or len(data["name"]) > 120:
             raise Problem("Status name required")
         old = self.db.execute("SELECT * FROM statuses WHERE id=?", (ident,)).fetchone()
+        if old and not any(x["id"] == ident for x in self.statuses()):
+            raise Problem("Status unavailable in this workspace", 404)
+        for board in {
+            data.get("board_id"),
+            json.loads(old["data"]).get("board_id") if old else data.get("board_id"),
+        }:
+            if self.setting("publishing:" + (board or LOCAL)):
+                raise Problem("Board publication is in progress", 409)
         if old and old["revision"] != body.get("revision"):
             raise Problem("Status changed", 409)
         data = dict(
@@ -521,7 +600,10 @@ class Store:
             )
             args = {
                 "operation": operation,
-                "revision": self.setting("status_catalog:" + connection, "unknown"),
+                "revision": self.setting(
+                    "status_catalog:" + connection + ":" + board,
+                    self.setting("status_catalog:" + connection, "unknown"),
+                ),
                 "name": data["name"],
                 "color": data["color"],
                 "category": data["category"],

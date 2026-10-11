@@ -6,6 +6,7 @@ import json
 import os
 import socket
 import sys
+from pathlib import Path
 from alshitasks.paths import Paths
 from alshitasks.store import Problem
 
@@ -80,7 +81,12 @@ def mcp(paths, grant=None):
                 result = {
                     "protocolVersion": "2025-06-18",
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "alshitasks", "version": "0.1.0"},
+                    "serverInfo": {
+                        "name": "alshitasks",
+                        "version": json.loads(
+                            (Path(__file__).resolve().parents[1] / "package.json").read_text()
+                        )["version"],
+                    },
                 }
             elif method == "ping":
                 result = {}

@@ -44,3 +44,25 @@ part of this desktop update.
 0.1.4 installed UI passed on X11 and Wayland (Wayland first attempt lost its
 window during Trash restore; the repeat completed). Build/typecheck passed.
 Artifact SHA-256: `f5aad27b34c117e57c1e4f5b97d1a2771b1377aa91b960364e6bec6b860e0291`.
+
+## Desktop 0.1.5 — accounts, workspaces and board publishing
+
+Build/typecheck and 51 isolated Python checks pass. Source Electron UI tests pass
+on X11, including account Settings, workspace isolation and persisted selection.
+Publication tests cover immutable archive retries, lost commit responses without
+local rebinding, attachment preservation and cancellation acknowledgement. Portal
+validation passed 66 OAuth/API/board/sync checks, followed by 38 focused checks
+(36 passed, two live integration checks skipped). Migration drift check passes.
+
+Each local publication creates a separate portal board. Managed Neural Labs sync
+includes additional boards. The desktop remains standalone without an account;
+individual OAuth consent enables discovery of accessible workspaces. Portal API
+release and live end-to-end consent/sync remain pending. New files attached after
+publication remain local; files included in publication are shared and downloaded
+by other desktop clients. Portal and Neural Labs file-picker integration is not
+part of this release.
+
+Exact installed 0.1.5 UI passed on X11 and Wayland, including two cached-workspace
+fixtures and selection persistence. The 0.1.4 upgrade fixture remains byte-for-byte
+unchanged after opening it with the installed 0.1.5 service. User service is active.
+Artifact SHA-256: `7a3df6367081e6c221caaf766194d11e716155d719201851809f31e836367b36`.

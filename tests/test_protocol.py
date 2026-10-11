@@ -168,7 +168,7 @@ class Protocol(unittest.TestCase):
                 self.assertEqual(p.returncode, 0, p.stderr)
                 results = [json.loads(x) for x in p.stdout.splitlines()]
                 self.assertEqual(results[0]["result"]["serverInfo"]["name"], "alshitasks")
-                self.assertEqual(len(results[1]["result"]["tools"]), 15)
+                self.assertEqual(len(results[1]["result"]["tools"]), 16)
                 self.assertIn("result", results[2])
                 self.assertIn("error", results[3])
                 self.assertEqual((Path(d) / "runtime/service.sock").stat().st_mode & 0o777, 0o600)

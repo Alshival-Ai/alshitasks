@@ -150,3 +150,50 @@ td {
     transition: none;
   }
 }
+.workspace-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: var(--app-muted);
+  cursor: pointer;
+}
+.workspace-options {
+  position: absolute;
+  z-index: 2100;
+  top: 100%;
+  left: 0;
+  width: 300px;
+  max-width: 70vw;
+  max-height: 65vh;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--app-line);
+  border-radius: 12px;
+  background: var(--app-card);
+  box-shadow: 0 12px 32px #0002;
+}
+.workspace-options button {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-ink);
+  font: inherit;
+  cursor: pointer;
+}
+.workspace-options button:hover,
+.workspace-options button[aria-pressed="true"] {
+  background: var(--app-paper);
+}
+.workspace-options small {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-muted);
+}

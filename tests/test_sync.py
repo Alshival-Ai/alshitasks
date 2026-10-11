@@ -296,7 +296,7 @@ class SyncAcceptance(unittest.TestCase):
 
         values = {}
         exchanges = []
-        origin = self.c["origin"]
+        origin = "https://alshival.ai"
 
         def transport(origin, path, token=None, body=None, form=False):
             if path == "/oauth/register/":

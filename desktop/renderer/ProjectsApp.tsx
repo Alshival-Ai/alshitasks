@@ -1,5 +1,5 @@
 import { StickerPicker } from "./project-board/ResourceSticker";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   type Item,
   type ItemData,
@@ -8,7 +8,7 @@ import {
   type Edge,
   labels,
 } from "./project-board/types";
-import { projectApi as api } from "./project-board/api";
+import { workspaceApi, LOCAL_WORKSPACE } from "./project-board/api";
 import {
   PaperCard,
   Relations,
@@ -31,7 +31,14 @@ type View = (typeof views)[number];
 
 export function ProjectsApp({
   storageNamespace,
-}: { storageNamespace?: string } = {}) {
+  workspaceId = LOCAL_WORKSPACE,
+  navigationGuard,
+}: {
+  storageNamespace?: string;
+  workspaceId?: string;
+  navigationGuard?: { current: (() => boolean) | null };
+} = {}) {
+  const api = useMemo(() => workspaceApi(workspaceId), [workspaceId]);
   const [items, setItems] = useState<Item[]>([]),
     [boards, setBoards] = useState<Item[]>([]),
     [statuses, setStatuses] = useState<Status[]>([]),
@@ -144,6 +151,12 @@ export function ProjectsApp({
       window.confirm("Some notes have not saved. Discard those changes?"));
   const leave = () =>
     !dirty.current || window.confirm("Discard your unsaved changes?");
+  useEffect(() => {
+    if (navigationGuard) navigationGuard.current = leaveBoard;
+    return () => {
+      if (navigationGuard) navigationGuard.current = null;
+    };
+  });
   const open = (item: Item) => {
     if (noteDrafts.current.has(item.id)) {
       setError(

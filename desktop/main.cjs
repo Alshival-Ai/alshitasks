@@ -211,20 +211,14 @@ handle("tasks:request", (url, method, body) => {
     throw new Error("Request too large");
   return request(url, method, body);
 });
-handle("tasks:connect", async (origin) => {
-  const u = new URL(origin);
+handle("tasks:connect", async () => {
+  const result = await request("/v1/portal/connect", "POST", {});
+  const url = new URL(result.url);
   if (
-    u.protocol !== "https:" ||
-    u.username ||
-    u.password ||
-    u.pathname !== "/" ||
-    u.search ||
-    u.hash
+    url.origin !== "https://alshival.ai" ||
+    url.pathname !== "/oauth/authorize/"
   )
-    throw new Error("Use an HTTPS portal origin");
-  const result = await request("/v1/portal/connect", "POST", {
-    origin: u.origin,
-  });
+    throw new Error("Invalid sign-in destination");
   await shell.openExternal(result.url);
   return { started: true };
 });

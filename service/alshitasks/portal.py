@@ -82,7 +82,7 @@ def merge(base, local, shared):
 
 
 def encode_data(store, connection, data):
-    data = {k: v for k, v in data.items() if k not in ("position", "details", "resource_id")}
+    data = {k: v for k, v in data.items() if k not in ("position", "resource_id")}
     for field in ("board_id", "parent_id", "status_id"):
         if data.get(field):
             row = store.db.execute(
@@ -170,6 +170,15 @@ class Portal:
         return value["access_token"]
 
     def connect(self, origin):
+        from .accounts import ORIGIN
+
+        if origin != ORIGIN:
+            raise Problem("Sign-in is available only through Alshival.Ai")
+        if self.store.setting("active_account"):
+            raise Problem("Sign out before signing into another account", 409)
+        if self.store.db.execute("SELECT 1 FROM connections WHERE state='authorizing'").fetchone():
+            raise Problem("Sign-in is already open in your browser", 409)
+        generation = self.store.setting("authorization_generation", 0)
         ident = uid()
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
@@ -225,19 +234,27 @@ class Portal:
                         ),
                     )
                     with store.tx():
+                        if store.setting("authorization_generation", 0) != generation:
+                            raise Problem("Sign-in was cancelled", 409)
                         store.db.execute(
                             "UPDATE connections SET account=?,state='connected',capabilities=? WHERE id=?",
                             (str(capabilities["account_id"]), json.dumps(capabilities), ident),
                         )
+                        from .accounts import activate
+
+                        activate(store, ident, capabilities)
                     self.send_response(200)
                     self.send_header("Content-Type", "text/plain")
                     self.end_headers()
-                    self.wfile.write(b"Connected. Return to Alshival.Ai and select a workspace.")
+                    self.wfile.write(
+                        b"Signed in. Return to Alshival.Ai; your workspaces will sync automatically."
+                    )
                 except Exception:
                     with store.tx():
                         store.db.execute(
                             "UPDATE connections SET state='authorization-failed' WHERE id=?", (ident,)
                         )
+                    Secrets().delete(ident)
                     self.send_error(400, "Unable to finish sign-in; retry from Alshival.Ai")
                 finally:
                     finished.set()
@@ -305,6 +322,19 @@ class Portal:
         }
 
     def dispatch(self, path, method, body, q):
+        if path == "/v1/portal/publish":
+            from .publishing import dispatch
+
+            return dispatch(self.store, method, body)
+        if path in (
+            "/v1/portal/account",
+            "/v1/portal/signout",
+            "/v1/portal/retry",
+            "/v1/portal/publish-offer",
+        ):
+            from .accounts import dispatch
+
+            return dispatch(self.store, path, method, body)
         if path == "/v1/portal/connections":
             return {
                 "connections": [
@@ -315,7 +345,9 @@ class Portal:
                 ]
             }
         if path == "/v1/portal/connect" and method == "POST":
-            return self.connect(body["origin"].rstrip("/"))
+            from .accounts import ORIGIN
+
+            return self.connect(ORIGIN)
         if path in ("/v1/portal/logs", "/v1/portal/monitoring") and method == "GET":
             resource = q.get("resource_id")
             row = self.store.db.execute(
@@ -390,6 +422,9 @@ def sync_connection(store, c, transport=remote, token=None):
     edges = []
     status_revision = None
     members = []
+    attachments = []
+    status_revisions = {}
+    default_board = None
     while True:
         if cursor in seen:
             raise Problem("Snapshot cursor repeated", 409)
@@ -398,6 +433,9 @@ def sync_connection(store, c, transport=remote, token=None):
             c["origin"], prefix + "/snapshot" + ("?" + urlencode({"cursor": cursor}) if cursor else ""), token
         )
         records.extend(page["items"])
+        attachments.extend(page.get("attachments", []))
+        status_revisions.update(page.get("status_revisions", {}))
+        default_board = page.get("default_board_id", default_board)
         statuses.extend(page.get("statuses", []))
         edges.extend(page.get("edges", []))
         members.extend(page.get("members", []))
@@ -412,6 +450,8 @@ def sync_connection(store, c, transport=remote, token=None):
     # Nothing is committed until every page succeeds. Missing records never delete cached content.
     remote_by_id = {r["id"]: r for r in records}
     with store.tx():
+        if adapter.connection(c["id"])["state"] != "connected":
+            return
         if members:
             cached_members = []
             for member in members:
@@ -421,19 +461,31 @@ def sync_connection(store, c, transport=remote, token=None):
             store.set_setting("members:" + c["id"], cached_members)
         boards = [r for r in records if r["kind"] == "board"]
         if boards:
-            store.set_setting("cached_board:" + c["id"], cached_item_id(store, c["id"], boards[0]["id"]))
+            store.set_setting(
+                "cached_board:" + c["id"], cached_item_id(store, c["id"], default_board or boards[0]["id"])
+            )
         if status_revision:
             store.set_setting("status_catalog:" + c["id"], status_revision)
+        for board_id, revision in status_revisions.items():
+            store.set_setting(
+                "status_catalog:" + c["id"] + ":" + cached_item_id(store, c["id"], board_id), revision
+            )
         for status in statuses:
             ident = store.setting(
                 "status_local:" + c["id"] + ":" + status["id"], local_id(c["id"], status["id"])
             )
             data = {k: v for k, v in status.items() if k not in ("id", "revision")}
             data["board_id"] = (
-                local_id(c["id"], status["board_id"])
+                cached_item_id(store, c["id"], status["board_id"])
                 if status.get("board_id")
                 else store.setting("cached_board:" + c["id"])
             )
+            if data.get("replacement_id"):
+                remote_replacement = data["replacement_id"]
+                data["replacement_id"] = store.setting(
+                    "status_local:" + c["id"] + ":" + remote_replacement,
+                    local_id(c["id"], remote_replacement),
+                )
             queued = store.db.execute(
                 "SELECT 1 FROM outbox WHERE connection=? AND state IN ('queued','draft','conflict') AND json_extract(payload,'$.status')=?",
                 (c["id"], ident),
@@ -444,6 +496,7 @@ def sync_connection(store, c, transport=remote, token=None):
                     (ident, status.get("revision", 1), json.dumps(data)),
                 )
             store.set_setting("status_remote:" + ident, status["id"])
+            store.set_setting("status_local:" + c["id"] + ":" + status["id"], ident)
         for record in records:
             existing_map = store.db.execute(
                 "SELECT id FROM items WHERE connection=? AND remote_id=?", (c["id"], record["id"])
@@ -506,7 +559,13 @@ def sync_connection(store, c, transport=remote, token=None):
                 "SELECT * FROM outbox WHERE connection=? AND state='queued' ORDER BY rowid", (c["id"],)
             )
         ]
+    from .sync_files import download_attachments
+
+    download_attachments(store, c, attachments, transport, token)
     for job in pending:
+        with store.lock:
+            if adapter.connection(c["id"])["state"] != "connected":
+                return
         payload = json.loads(job["payload"])
         if payload.get("operation") == "project_status_write":
             try:
@@ -519,6 +578,12 @@ def sync_connection(store, c, transport=remote, token=None):
                 with store.tx():
                     store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
                     store.set_setting("status_catalog:" + c["id"], result["revision"])
+                    remote_board = payload["arguments"].get("board_id")
+                    if remote_board:
+                        store.set_setting(
+                            "status_catalog:" + c["id"] + ":" + cached_item_id(store, c["id"], remote_board),
+                            result["revision"],
+                        )
                     args = payload["arguments"]
                     matches = [
                         x
@@ -725,27 +790,61 @@ def sync_connection(store, c, transport=remote, token=None):
 
 
 def sync_all(store):
-    with store.lock:
-        connections = [
-            dict(r)
-            for r in store.db.execute("SELECT * FROM connections WHERE state='connected' AND workspace!=''")
-        ]
-    for c in connections:
-        if c["cursor"]:
-            from datetime import datetime
+    if not store.sync_lock.acquire(blocking=False):
+        return
+    try:
+        from .accounts import discover
 
-            if time.time() - datetime.fromisoformat(c["cursor"]).timestamp() < 30:
+        discover(store)
+        from .publishing import resume_all
+
+        resume_all(store)
+        with store.lock:
+            connections = [
+                dict(r)
+                for r in store.db.execute(
+                    "SELECT * FROM connections WHERE state='connected' AND workspace!=''"
+                )
+            ]
+        for c in connections:
+            with store.lock:
+                schedule = store.setting("sync:" + c["id"], {})
+                pending = store.db.execute(
+                    "SELECT 1 FROM outbox WHERE connection=? AND state='queued'", (c["id"],)
+                ).fetchone()
+            if schedule.get("next", 0) > time.time():
                 continue
-        try:
-            sync_connection(store, c)
-        except Problem as e:
-            if e.status in (401, 403):
+            if c["cursor"] and not pending:
+                from datetime import datetime
+
+                if time.time() - datetime.fromisoformat(c["cursor"]).timestamp() < 30:
+                    continue
+            try:
                 with store.tx():
-                    store.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (c["id"],))
-                    store.db.execute(
-                        "UPDATE outbox SET state='draft',reason='Authorization removed' WHERE connection=? AND state='queued'",
-                        (c["id"],),
+                    store.set_setting("sync:" + c["id"], {"state": "syncing"})
+                sync_connection(store, c)
+                with store.tx():
+                    store.set_setting("sync:" + c["id"], {"state": "up-to-date"})
+            except Problem as e:
+                with store.tx():
+                    attempt = schedule.get("attempt", 0) + 1
+                    store.set_setting(
+                        "sync:" + c["id"],
+                        {
+                            "state": "attention" if e.status in (400, 401, 403, 409) else "offline",
+                            "error": str(e),
+                            "attempt": attempt,
+                            "next": time.time() + min(300, 2 ** min(attempt, 8)),
+                        },
                     )
+                    if e.status in (401, 403):
+                        store.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (c["id"],))
+                        store.db.execute(
+                            "UPDATE outbox SET state='draft',reason='Authorization removed' WHERE connection=? AND state='queued'",
+                            (c["id"],),
+                        )
+    finally:
+        store.sync_lock.release()
 
 
 def resolve_conflict(store, body):

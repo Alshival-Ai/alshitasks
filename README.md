@@ -32,7 +32,7 @@ The token lives in Secret Service; the command prints only its entry ID. To inge
 
 ## Optional portal connection
 
-Connections opens system-browser OAuth with PKCE and a native loopback callback. The matching portal implementation uses the distinct `/desktop/v1` resource audience. Existing workspace MCP tokens cannot access it. Choose workspaces explicitly; local boards never upload automatically. Offline task changes retain revision bases and idempotency keys; overlapping changes become conflicts, permission-rejected work becomes visible drafts, and incomplete snapshots never delete local records. Connections require the matching portal release and individual browser consent.
+Settings → Alshival.Ai account opens system-browser OAuth with PKCE and a native loopback callback. The matching portal implementation uses the distinct `/desktop/v1` resource audience. Existing workspace MCP tokens cannot access it. The workspace switcher includes Local and every authorized workspace. Local boards upload only through an explicit Publish board action. Offline task changes retain revision bases and idempotency keys; overlapping changes become conflicts, permission-rejected work becomes visible drafts, and incomplete snapshots never delete local records. Account sync requires the matching portal release and individual browser consent.
 
 ## Recovery
 
@@ -40,4 +40,4 @@ Settings exports SQLite-consistent backups plus all managed attachments and logs
 
 Public release requires clean-machine installation and a data-preserving upgrade rehearsal. Do not update the team provisioning package before pilot acceptance. Portal billing, tickets, private chat and administration are outside this app.
 
-Team installations may supply a non-secret, readable `/etc/alshitasks/team.json` containing `{"portal_url":"https://alshival.ai"}`. Each user still authorizes their own account in the system browser. No keys or shared credentials belong in this file.
+Sign-in uses the fixed Alshival.Ai portal origin. No URL configuration is needed; every user authorizes their own account in the system browser.

@@ -35,8 +35,17 @@ class API:
         self.stopping = False
 
     def members(self):
-        result = [{"id": "local", "name": "Me"}] + self.store.setting("local_members", [])
+        from .workspaces import LOCAL
+
+        selected = self.store.workspace
+        result = (
+            ([{"id": "local", "name": "Me"}] + self.store.setting("local_members", []))
+            if selected in (None, LOCAL)
+            else []
+        )
         for row in self.store.db.execute("SELECT id FROM connections"):
+            if selected is not None and selected != row["id"]:
+                continue
             result.extend(
                 {"id": m["id"], "name": m.get("name", "Member")}
                 for m in self.store.setting("members:" + row["id"], [])
@@ -50,6 +59,13 @@ class API:
         return row[0] if row else (self.store.setting("remote_edge:" + ident, {}).get("created_at") or now())
 
     def dispatch(self, path, method="GET", body=None, owner=False, token=""):
+        from .workspaces import scope
+
+        q = parse_qs(urlsplit(path).query)
+        with scope(self.store, q.get("workspace_id", [None])[-1]):
+            return self._dispatch(path, method, body, owner, token)
+
+    def _dispatch(self, path, method="GET", body=None, owner=False, token=""):
         body = body or {}
         url = urlsplit(path)
         path = url.path
@@ -75,6 +91,10 @@ class API:
             grant = authorize(s, token, scope, resource)
             if grant["resource_id"] and path not in ("/v1/logs", "/v1/monitoring", "/v1/heartbeat"):
                 raise Problem("Resource grant cannot access project records", 403)
+        if path == "/v1/workspaces":
+            from .workspaces import catalog
+
+            return {"workspaces": catalog(s)}
         if path == "/v1/health":
             return {"ok": True, "version": "0.1.4"}
         if path == "/v1/mcp":
@@ -89,6 +109,7 @@ class API:
                     return s.create(body)
             if len(parts) >= 2 and parts[0] == "items":
                 ident = parts[1]
+                s.item(ident)
                 if len(parts) == 2:
                     if method == "GET":
                         return s.item(ident)
@@ -107,7 +128,15 @@ class API:
                         ]
                     }
             if suffix == "/boards":
-                return {"boards": [s.row(r) for r in s.db.execute("SELECT * FROM items WHERE kind='board'")]}
+                from .workspaces import visible
+
+                return {
+                    "boards": [
+                        s.row(r)
+                        for r in s.db.execute("SELECT * FROM items WHERE kind='board'")
+                        if visible(s, r["connection"])
+                    ]
+                }
             if suffix == "/members":
                 return {
                     "members": [dict(m, display_name=m.get("name", "Member")) for m in self.members()],
@@ -331,17 +360,32 @@ class API:
             if method == "DELETE":
                 s.db.execute("UPDATE forwarding SET enabled=0 WHERE id=?", (body["id"],))
                 return {"disabled": True}
+        if path == "/v1/agent-grants" and method == "POST":
+            result = grant_create(s, body)
+            Secrets().put(result["id"], result["token"])
+            return {
+                "id": result["id"],
+                "config": {
+                    "mcpServers": {
+                        "alshitasks": {"command": "alshitasks", "args": ["mcp", "--grant", result["id"]]}
+                    }
+                },
+            }
         if path.startswith("/v1/portal"):
             from .portal import Portal
 
             return Portal(s).dispatch(path, method, body, q)
         if path == "/v1/drafts":
+            from .workspaces import catalog
+
+            allowed = {w["id"] for w in catalog(s)}
             return {
                 "drafts": [
                     dict(r)
                     for r in s.db.execute(
-                        "SELECT o.id,o.reason,json_extract(i.data,'$.title') AS title FROM outbox o JOIN items i ON i.id=o.item_id WHERE o.state='draft'"
+                        "SELECT o.id,o.reason,o.connection,json_extract(i.data,'$.title') AS title FROM outbox o JOIN items i ON i.id=o.item_id WHERE o.state='draft'"
                     )
+                    if r["connection"] in allowed
                 ]
             }
         if path == "/v1/drafts/resubmit" and method == "POST":
@@ -358,7 +402,16 @@ class API:
             s.db.execute("UPDATE outbox SET state='queued',reason='' WHERE id=?", (row["id"],))
             return {"queued": True}
         if path == "/v1/conflicts":
-            return {"conflicts": [dict(r) for r in s.db.execute("SELECT * FROM conflicts WHERE resolved=0")]}
+            from .workspaces import catalog
+
+            allowed = {w["id"] for w in catalog(s)}
+            return {
+                "conflicts": [
+                    dict(r)
+                    for r in s.db.execute("SELECT * FROM conflicts WHERE resolved=0")
+                    if r["connection"] in allowed
+                ]
+            }
         if path == "/v1/conflicts/resolve" and method == "POST":
             from .portal import resolve_conflict
 
@@ -417,6 +470,14 @@ class API:
         }
 
     def execute_tool(self, name, args, owner=False, token=""):
+        from .workspaces import scope
+        from .contract import validate
+
+        validate(name, args)
+        with scope(self.store, args.get("workspace_id")):
+            return self._execute_tool(name, args, owner, token)
+
+    def _execute_tool(self, name, args, owner=False, token=""):
         from .contract import tools, validate
 
         validate(name, args)
@@ -424,8 +485,11 @@ class API:
         if not owner:
             authorize(self.store, token, "project:read" if tool["readOnly"] else "project:write")
         args = dict(args)
-        if args.pop("workspace_id", None):
-            raise Problem("Local tools do not accept a portal workspace ID; use its cached board identity")
+        args.pop("workspace_id", None)
+        if name == "workspace_list":
+            from .workspaces import catalog
+
+            return {"workspaces": catalog(self.store)}
         s = self.store
         if name == "project_list":
             return s.list(**args)
@@ -451,6 +515,8 @@ class API:
                 "items": members[:limit],
                 "next": members[limit - 1]["id"] if len(members) > limit else None,
             }
+        if args.get("board_id"):
+            s.item(args["board_id"])
         if name == "project_statuses":
             return self.status_catalog(args.get("board_id"))
         if name == "project_status_write":
@@ -544,6 +610,7 @@ class API:
 
             return s.replay(args["idempotency_key"], args, unlink)
         if name == "project_comments":
+            s.item(args["id"])
             limit = args.get("limit", 100)
             rows = [
                 s.row(r)

@@ -3,7 +3,7 @@ declare global {
   interface Window {
     tasks: {
       request: (path: string, method?: string, body?: unknown) => Promise<any>;
-      connect: (origin: string) => Promise<any>;
+      connect: () => Promise<any>;
       importAttachment: (item: string) => Promise<any>;
       saveAttachment: (id: string) => Promise<any>;
       backup: () => Promise<any>;
