@@ -40,6 +40,7 @@ export function Canvas({
       id: string;
       pointer: number;
       start: Position;
+      canvasStart: Position;
       origin: Position;
       next: Position;
       target: HTMLButtonElement;
@@ -53,14 +54,7 @@ export function Canvas({
     if (saved && typeof saved === "object" && !Array.isArray(saved))
       for (const [id, point] of Object.entries(saved)) {
         const p = point as Position;
-        if (
-          p &&
-          Number.isFinite(p.x) &&
-          Number.isFinite(p.y) &&
-          p.x >= 0 &&
-          p.y >= 0
-        )
-          valid[id] = p;
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) valid[id] = p;
       }
     setPositions(valid);
   }, [namespace, area]);
@@ -107,16 +101,25 @@ export function Canvas({
         !resources.some((r) => r.id === n.data.resource_id),
     ),
   ];
-  const bound = (point: Position) => ({
-    x: Math.max(
-      0,
-      Math.min(
-        point.x,
-        Math.max(0, (canvas.current?.clientWidth ?? 1000) - 240),
+  const bound = (point: Position) => {
+    const grid = canvas.current;
+    const board = grid?.closest<HTMLElement>(".project-parity-board");
+    if (!grid || !board) return point;
+    const gridBox = grid.getBoundingClientRect();
+    const boardBox = board.getBoundingClientRect();
+    // Saved positions remain relative to the grid for compatibility, but cards
+    // can move anywhere in the board's scrollable content, including above it.
+    const left =
+      boardBox.left + board.clientLeft - board.scrollLeft - gridBox.left;
+    const top = boardBox.top + board.clientTop - board.scrollTop - gridBox.top;
+    return {
+      x: Math.max(
+        left,
+        Math.min(point.x, left + Math.max(0, board.clientWidth - 240)),
       ),
-    ),
-    y: Math.max(0, Math.min(point.y, 100000)),
-  });
+      y: Math.max(top, Math.min(point.y, 100000)),
+    };
+  };
   return (
     <section className="sp-scrapbook-notes" aria-label="Notes & Resources">
       <header className="sp-section-heading">
@@ -251,10 +254,12 @@ export function Canvas({
                       x: card.offsetLeft,
                       y: card.offsetTop,
                     };
+                    const gridBox = canvas.current!.getBoundingClientRect();
                     drag.current = {
                       id: item.id,
                       pointer: event.pointerId,
                       start: { x: event.clientX, y: event.clientY },
+                      canvasStart: { x: gridBox.left, y: gridBox.top },
                       origin,
                       next: origin,
                       target: event.currentTarget,
@@ -264,9 +269,20 @@ export function Canvas({
                   onPointerMove={(event) => {
                     const current = drag.current;
                     if (!current || current.pointer !== event.pointerId) return;
+                    const gridBox = canvas.current!.getBoundingClientRect();
                     const next = bound({
-                      x: current.origin.x + event.clientX - current.start.x,
-                      y: current.origin.y + event.clientY - current.start.y,
+                      x:
+                        current.origin.x +
+                        event.clientX -
+                        current.start.x +
+                        current.canvasStart.x -
+                        gridBox.left,
+                      y:
+                        current.origin.y +
+                        event.clientY -
+                        current.start.y +
+                        current.canvasStart.y -
+                        gridBox.top,
                     });
                     current.next = next;
                     setMoving({ id: item.id, at: next });
