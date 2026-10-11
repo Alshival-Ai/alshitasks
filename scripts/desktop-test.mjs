@@ -1,7 +1,7 @@
 import { _electron as electron } from "playwright";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import path from "node:path";
 import assert from "node:assert/strict";
 const root = await mkdtemp(path.join(os.tmpdir(), "alshitasks-desktop-"));
@@ -30,6 +30,14 @@ try {
     null,
   );
   await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  const secondary = spawnSync(
+    '/usr/lib/alshitasks/electron/electron',
+    ['--ozone-platform=' + (process.env.ALSHITASKS_TEST_DISPLAY || 'x11'), process.env.ALSHITASKS_TEST_APP || path.resolve('.')],
+    { env: { ...process.env, ALSHITASKS_TEST_ROOT: root }, timeout: 10000, encoding: 'utf8', stdio: 'pipe' },
+  );
+  assert.equal(secondary.status, 0, secondary.stderr);
+  assert.doesNotMatch(secondary.stderr, /ERR_FAILED|Desktop startup failed/);
+  assert.equal(app.windows().length, 1);
   await page.waitForFunction(
     () => document.documentElement.dataset.theme === "dark",
   );

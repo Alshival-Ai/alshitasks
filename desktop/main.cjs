@@ -46,7 +46,8 @@ protocol.registerSchemesAsPrivileged([
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
 ]);
-if (!app.requestSingleInstanceLock()) app.quit();
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
 app.on("second-instance", () => {
   win?.show();
   win?.focus();
@@ -382,6 +383,9 @@ app.enableSandbox();
 app
   .whenReady()
   .then(async () => {
+    // app.quit() does not cancel an already-resolved whenReady() promise.
+    // A secondary process must not create protocols/services/windows while exiting.
+    if (!primaryInstance) return;
     protocol.handle("alshitasks", async (request) => {
       const u = new URL(request.url);
       if (u.host !== "app") return new Response("", { status: 403 });
