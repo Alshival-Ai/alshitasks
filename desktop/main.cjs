@@ -206,7 +206,12 @@ handle("tasks:request", (url, method, body) => {
     !["GET", "POST", "PATCH", "DELETE"].includes(method) ||
     url.startsWith("/v1/backup") ||
     url.startsWith("/v1/stop") ||
-    (url.startsWith("/v1/attachments") && method !== "GET")
+    url.startsWith("/v1/ssh/key") ||
+    (url.startsWith("/v1/attachments") &&
+      !["GET", "DELETE"].includes(method) &&
+      !(
+        method === "POST" && /^\/v1\/attachments\/[a-f0-9-]+\/review$/.test(url)
+      ))
   )
     throw new Error("Invalid desktop request");
   if (JSON.stringify(body ?? {}).length > 1024 * 1024)
@@ -250,7 +255,9 @@ handle("tasks:external", (url) => {
     throw new Error("Unsupported link");
   return shell.openExternal(u.href);
 });
-handle("tasks:import", async (item) => {
+handle("tasks:import", async (item, replaces) => {
+  if (replaces && !/^[a-f0-9-]{36}$/.test(replaces))
+    throw new Error("Invalid attachment");
   if (!/^[a-f0-9-]{36}$/.test(item)) throw new Error("Invalid item");
   const value = await dialog.showOpenDialog(win, { properties: ["openFile"] });
   if (value.canceled) return;
@@ -259,8 +266,22 @@ handle("tasks:import", async (item) => {
     throw new Error("Attachment exceeds 20 MiB");
   return request("/v1/attachments", "POST", {
     item_id: item,
+    replaces,
     name: path.basename(file),
     content: fs.readFileSync(file).toString("base64"),
+  });
+});
+handle("tasks:ssh-key", async (resource, settings) => {
+  if (!/^[a-f0-9-]{36}$/.test(resource)) throw new Error("Invalid resource");
+  const selected = await dialog.showOpenDialog(win, {
+    title: "Choose a local SSH private key",
+    properties: ["openFile"],
+  });
+  if (selected.canceled) return;
+  return request("/v1/ssh/key", "POST", {
+    ...settings,
+    resource_id: resource,
+    path: selected.filePaths[0],
   });
 });
 handle("tasks:save-attachment", async (id) => {
@@ -397,6 +418,22 @@ app
       }
     });
     await win.loadURL("alshitasks://app/index.html");
+    let lastRevision,
+      checkingRevision = false;
+    setInterval(async () => {
+      if (checkingRevision || !win || win.isDestroyed()) return;
+      checkingRevision = true;
+      try {
+        const { revision } = await request("/v1/revision");
+        if (revision !== lastRevision) {
+          lastRevision = revision;
+          win.webContents.send("tasks:changed");
+        }
+      } catch {
+      } finally {
+        checkingRevision = false;
+      }
+    }, 250).unref();
     setInterval(async () => {
       try {
         const v = await request("/v1/monitoring");

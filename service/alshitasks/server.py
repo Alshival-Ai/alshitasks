@@ -112,9 +112,6 @@ def background(api, stop):
             with api.store.tx():
                 monitoring.forward_once(api.store)
                 api.logs.retain(**api.store.setting("retention", {"days": 7, "max_bytes": 1024**3}))
-            from .portal import sync_all
-
-            sync_all(api.store)
         except Exception:
             # Endpoint-specific status is durable; no credential-bearing diagnostics.
             pass
@@ -145,7 +142,10 @@ def run(root=None):
         servers.append(listener)
     for server in servers:
         threading.Thread(target=server.serve_forever, daemon=True).start()
-    threading.Thread(target=background, args=(api, stop), daemon=True).start()
+    from .sync_worker import graph_loop, file_loop, notification_loop
+
+    for worker in (background, graph_loop, file_loop, notification_loop):
+        threading.Thread(target=worker, args=(api, stop), daemon=True).start()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
     stop.wait()

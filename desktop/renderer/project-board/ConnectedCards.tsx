@@ -1,3 +1,5 @@
+import { LocalSSH } from "./LocalSSH";
+import { Attachments } from "./Attachments";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -360,7 +362,9 @@ export function Relations({
               <button type="button" onClick={() => open(target)}>
                 {target.data.title}{" "}
                 <small>
-                  · {target.kind}
+                  · {target.kind} ·{" "}
+                  {items.find((b) => b.id === target.data.board_id)?.data
+                    .title || "Workspace"}
                   {edge.kind === "depends_on"
                     ? edge.source_id === item.id
                       ? " · Depends on"
@@ -438,7 +442,9 @@ export function Relations({
                   >
                     {target.data.title}{" "}
                     <small>
-                      · {target.kind}
+                      · {target.kind} ·{" "}
+                      {items.find((b) => b.id === target.data.board_id)?.data
+                        .title || "Workspace"}
                       {linked ? " · Linked" : ""}
                     </small>
                   </button>
@@ -609,7 +615,11 @@ export function PaperCard({
         {resource ? (
           <>
             <h2>{item.data.title}</h2>
-            {item.data.resource?.tags?.length ? <div className="resource-sticker-identity"><ResourceTags tags={item.data.resource.tags} /></div> : null}
+            {item.data.resource?.tags?.length ? (
+              <div className="resource-sticker-identity">
+                <ResourceTags tags={item.data.resource.tags} />
+              </div>
+            ) : null}
             <p className="connected-meta">
               {item.data.resource?.kind} · {item.data.resource?.status} ·{" "}
               {item.data.resource?.environment}
@@ -760,6 +770,7 @@ export function PaperCard({
                     ))}
                 </div>
                 <Relations {...{ item, items, edges, connect, unlink, open }} />
+                <Attachments item={item.id} />
               </>
             )}
             {section === "activity" && (
@@ -779,6 +790,7 @@ export function PaperCard({
             )}
             <div hidden={section !== "settings"}>
               <ResourceSettings item={item} change={change} onDirty={onDirty} />
+              <LocalSSH item={item} />
               <button
                 type="button"
                 onClick={() =>
@@ -795,6 +807,7 @@ export function PaperCard({
           <>
             <NoteEditor {...{ item, items, change, open, onDirty, editable }} />
             <Relations {...{ item, items, edges, connect, unlink, open }} />
+            <Attachments item={item.id} />
             {editable && (
               <div className="connected-actions">
                 {item.data.resource_id ? (
@@ -957,7 +970,16 @@ function ResourceSettings({
         </select>
       </label>
       <StickerPicker value={base.data.resource?.sticker} />
-      <label>Tags<input name="tags" maxLength={500} defaultValue={(base.data.resource?.tags ?? []).join(", ")} placeholder="Production, Client-facing" /><small>Up to 12 comma-separated tags, 40 characters each.</small></label>
+      <label>
+        Tags
+        <input
+          name="tags"
+          maxLength={500}
+          defaultValue={(base.data.resource?.tags ?? []).join(", ")}
+          placeholder="Production, Client-facing"
+        />
+        <small>Up to 12 comma-separated tags, 40 characters each.</small>
+      </label>
       <label>
         Resource status
         <select

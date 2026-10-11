@@ -38,7 +38,23 @@ class Workspaces(unittest.TestCase):
         with self.s.tx():
             self.s.set_setting("discovery", {"next": 0})
         with patch("alshitasks.portal.Portal.token", return_value="fixture"):
-            discover(self.s, lambda *a: {"workspaces": self.remote})
+            discover(
+                self.s,
+                lambda origin, path, token: (
+                    {"resource": origin + "/desktop/v1", "account_id": "7", "features": ["graph-sync-v2"]}
+                    if path.endswith("/capabilities")
+                    else {"workspaces": self.remote}
+                ),
+            )
+
+    def test_discovery_refreshes_existing_connection_capabilities(self):
+        import json
+
+        with self.s.tx():
+            self.s.db.execute("UPDATE connections SET capabilities='{}'")
+        self.discover()
+        for row in self.s.db.execute("SELECT capabilities FROM connections"):
+            self.assertIn("graph-sync-v2", json.loads(row[0])["features"])
 
     def create(self, workspace, title="Board"):
         with self.s.tx(), scope(self.s, workspace):

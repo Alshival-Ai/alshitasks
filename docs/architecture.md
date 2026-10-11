@@ -16,11 +16,23 @@ The matching portal source is maintained separately in the Alshival website repo
 
 ## Workspace sync and publishing
 
-The desktop polls discovery and complete revision snapshots every 30 seconds, with
-queued writes checked every two seconds and bounded retries after failures. This
-requires no inbound port or webhook on a user's computer. Portal database triggers
-continue to feed the managed Neural Labs mirror; desktop sync uses individual user
-permissions and a separate OAuth audience. Membership is rechecked on each request.
+Discovery refreshes workspace access and server capabilities every 30 seconds.
+With `graph-sync-v2`, the desktop consumes consistent, paginated checkpoints and
+incremental differences. SSE change notices wake independent workspace workers;
+polling and bounded backoff recover missed notices and offline periods. Up to four
+workspaces receive SSE simultaneously; additional workspaces retain polling.
+No inbound port or webhook is required on the computer. Portal database triggers
+maintain section revisions and an invalidation journal. The portal currently
+projects authorized snapshots to calculate differences; this is not a per-record
+journal replay implementation. Large-workspace latency is not yet benchmarked.
+The existing Neural Labs integration is unchanged.
+
+Each queued write persists its exact request before transport. Lost responses retry
+that request before calculating a new merge. Independent field changes merge;
+overlapping edits require per-field review, with both versions retained. Graph
+workers do not wait for attachment transfers. Relationships can cross boards in a
+workspace; dependencies require tasks and cannot form cycles. Resource mentions
+translate between local and portal identities and maintain their relationships.
 
 Local publication uploads a deterministic archive in resumable 256 KiB chunks. The
 portal imports the complete board, statuses, relationships and files atomically,
@@ -33,3 +45,28 @@ URLs remain aliases of their original default board.
 The bundled MCP server exposes `workspace_list` and accepts `workspace_id` on
 project tools. Its selected scope is per request, independent of the desktop UI.
 Settings can create a revocable agent grant and copy the local MCP configuration.
+
+## Ordinary attachments and local SSH
+
+Ordinary attachments are private local copies. Local-only boards do not upload them.
+On a connected board, new files, replacements and deletions sync with the portal
+when `graph-files-v2` is available. Transfers use resumable 256 KiB chunks, SHA-256
+verification, stable completion receipts and revision checks. The portal enforces
+item access, file size and workspace quota, and scans uploaded bytes before sharing.
+A partial download never replaces the completed local copy. Pending uploads expire
+after seven days and restart automatically. Conflicting replacements stop for review;
+Keep both files publishes a separate local copy and downloads the portal version.
+Conflicting deletions offer to retain the changed portal file.
+
+Resource SSH settings belong to this computer. The native file chooser copies a
+private key into the user's private application configuration directory with mode
+0600. Keys never become graph attachments, outbox entries, portal uploads or app
+backup contents. Ordinary attachment import rejects recognizable PEM/OpenSSH
+private-key headers. This detection does not classify every possible secret file.
+Users may instead use their SSH agent. Configuration manages `alt-*` aliases in
+`~/.ssh/alshitasks.conf` and includes it from `~/.ssh/config`, preserving unrelated
+configuration. OpenSSH performs host-key verification. Removing an alias does not
+delete imported key material. Another computer requires its own SSH setup.
+
+Source updates alone do not activate the matching portal endpoints. An older portal
+keeps ordinary file jobs queued locally until it advertises the file capability.

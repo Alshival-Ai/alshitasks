@@ -1,3 +1,4 @@
+import { Attachments } from "./project-board/Attachments";
 import { StickerPicker } from "./project-board/ResourceSticker";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
@@ -110,11 +111,13 @@ export function ProjectsApp({
     const update = () =>
       void refresh().catch((reason) => setError(reason.message));
     update();
-    const timer = setInterval(update, 4000);
+    const unsubscribe = window.tasks.onChanged(update);
+    const timer = setInterval(update, 30000);
     return () => {
       alive.current = false;
       ++serial.current;
       clearInterval(timer);
+      unsubscribe();
     };
   }, [refresh, storageNamespace]);
   useEffect(() => {
@@ -1189,6 +1192,7 @@ export function ProjectsApp({
                         unlink={unlink}
                         open={open}
                       />
+                      <Attachments item={selected.id} />
                       <h3>Checklist</h3>
                       {(selected.data.checklist ?? []).map((entry, index) => (
                         <label key={entry.id}>

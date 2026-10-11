@@ -1,5 +1,6 @@
 """One optional Alshival account; automatic permission-scoped workspace discovery."""
 
+import json
 import time
 from .store import Problem, uid
 from .security import Secrets
@@ -36,7 +37,8 @@ def signout(store):
     store.set_setting("authorization_generation", store.setting("authorization_generation", 0) + 1)
     for pending in store.db.execute("SELECT id FROM connections WHERE state='authorizing'").fetchall():
         store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (pending[0],))
-        Secrets().delete(pending[0])
+        with store.token_lock:
+            Secrets().delete(pending[0])
     current = store.setting("active_account")
     if not current:
         return {"signed_out": True}
@@ -51,7 +53,8 @@ def signout(store):
             (row["id"],),
         )
     for credential in credentials:
-        Secrets().delete(credential)
+        with store.token_lock:
+            Secrets().delete(credential)
     store.set_setting("active_account", None)
     return {"signed_out": True, "local_copies_retained": True}
 
@@ -68,12 +71,23 @@ def discover(store, transport=None):
         c = Portal(store).connection(account["connection"])
     try:
         token = Portal(store).token(c)
+        capabilities = transport(c["origin"], "/desktop/v1/capabilities", token)
+        if (
+            capabilities.get("resource") != c["origin"] + "/desktop/v1"
+            or str(capabilities.get("account_id")) != c["account"]
+        ):
+            raise Problem("Account capability identity changed; sign in again", 401)
+        encoded = json.dumps(capabilities)
         rows = transport(c["origin"], "/desktop/v1/workspaces", token)["workspaces"]
         if not isinstance(rows, list) or any(not all(k in w for k in ("id", "name", "scopes")) for w in rows):
             raise Problem("Incomplete workspace discovery", 502)
         with store.tx():
             if store.setting("active_account") != account:
                 return
+            store.db.execute(
+                "UPDATE connections SET capabilities=? WHERE origin=? AND account=?",
+                (encoded, c["origin"], c["account"]),
+            )
             seen = set()
             for w in rows:
                 if "project:read" not in w["scopes"]:
@@ -86,7 +100,7 @@ def discover(store, transport=None):
                 if not existing:
                     store.db.execute(
                         "INSERT INTO connections VALUES(?,?,?,?,?,?,?)",
-                        (ident, c["origin"], c["account"], w["id"], "connected", None, c["capabilities"]),
+                        (ident, c["origin"], c["account"], w["id"], "connected", None, encoded),
                     )
                 else:
                     store.db.execute("UPDATE connections SET state='connected' WHERE id=?", (ident,))
@@ -134,6 +148,7 @@ def dispatch(store, path, method, body):
         for r in store.db.execute("SELECT id FROM connections"):
             store.set_setting("sync:" + r[0], {"next": 0})
         store.db.execute("UPDATE connections SET cursor=NULL WHERE state='connected'")
+        store.sync_wake.set()
         return {"message": "Sync scheduled"}
     if path == "/v1/portal/publish-offer" and method == "POST":
         store.set_setting("publish_offer", False)

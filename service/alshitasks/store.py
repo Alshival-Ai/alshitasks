@@ -54,6 +54,8 @@ class Store:
         self.lock = threading.RLock()
         self.workspace = None
         self.sync_lock = threading.Lock()
+        self.token_lock = threading.RLock()
+        self.sync_wake = threading.Event()
         self.db = sqlite3.connect(paths.data / "projects.sqlite", check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.execute("PRAGMA journal_mode=WAL")
@@ -65,6 +67,9 @@ class Store:
 
             with self.tx():
                 adopt_legacy(self)
+                from .graph import migrate
+
+                migrate(self)
         except BaseException:
             self.db.close()
             raise
@@ -163,6 +168,7 @@ class Store:
         rows = self.db.execute(
             "SELECT * FROM items WHERE id>? AND (? IS NULL OR kind=?) "
             "AND (? IS NULL OR (?=? AND connection IS NULL) OR connection=?) "
+            "AND NOT EXISTS (SELECT 1 FROM settings WHERE key='unavailable:' || items.id AND value='true') "
             "AND (? IS NULL OR json_extract(data,'$.board_id')=?) ORDER BY id LIMIT ?",
             (after, kind, kind, workspace, workspace, LOCAL, workspace, board, board, limit + 1),
         ).fetchall()
@@ -259,6 +265,7 @@ class Store:
                 )
 
     def event(self, item_id, operation, data):
+        self.sync_wake.set()
         row = self.db.execute("SELECT connection FROM items WHERE id=?", (item_id,)).fetchone()
         self.retain_disconnected_drafts(row["connection"] if row else None)
         self.db.execute(
@@ -326,6 +333,9 @@ class Store:
                         json.dumps(self.item(item_id)),
                     ),
                 )
+            from .graph import synchronize_mentions
+
+            synchronize_mentions(self, self.item(item_id))
             self.event(item_id, "create", data)
             return self.item(item_id)
 
@@ -369,6 +379,9 @@ class Store:
                         json.dumps(self.item(item_id)),
                     ),
                 )
+            from .graph import synchronize_mentions
+
+            synchronize_mentions(self, self.item(item_id))
             self.event(item_id, "update", data)
             return self.item(item_id)
 
@@ -398,13 +411,15 @@ class Store:
             for x in self.db.execute(
                 "SELECT e.id,source_id,target_id,e.kind,e.revision FROM edges e JOIN items i ON i.id=e.source_id WHERE e.deleted=0"
             )
-            if visible(
+            if not self.setting("unavailable:" + x["source_id"], False)
+            and not self.setting("unavailable:" + x["target_id"], False)
+            and visible(
                 self,
                 self.db.execute("SELECT connection FROM items WHERE id=?", (x["source_id"],)).fetchone()[0],
             )
         ]
 
-    def edge_create(self, body):
+    def edge_create(self, body, *, explicit=True):
         def apply():
             from .workspaces import writable
 
@@ -415,8 +430,22 @@ class Store:
             kind = body.get("kind")
             if kind not in ("related", "depends_on") or source["id"] == target["id"]:
                 raise Problem("Invalid relationship")
-            if source["data"].get("board_id") != target["data"].get("board_id"):
-                raise Problem("Relationships must stay in one board")
+            if source["kind"] not in {"task", "note", "resource"} or target["kind"] not in {
+                "task",
+                "note",
+                "resource",
+            }:
+                raise Problem("Choose a task, note or resource")
+            connections = [
+                self.db.execute("SELECT connection FROM items WHERE id=?", (x["id"],)).fetchone()[0]
+                for x in (source, target)
+            ]
+            if connections[0] != connections[1]:
+                raise Problem("Relationships must stay in one workspace")
+            if kind == "depends_on" and (source["kind"] != "task" or target["kind"] != "task"):
+                raise Problem("Dependencies require two tasks")
+            if kind == "related" and source["id"] > target["id"]:
+                source, target = target, source
             if source["data"]["deleted"] or target["data"]["deleted"]:
                 raise Problem("Deleted record")
             if kind == "depends_on":
@@ -434,24 +463,27 @@ class Store:
                         seen.add(x)
                         todo.extend(adjacency.get(x, []))
             existing = self.db.execute(
-                "SELECT * FROM edges WHERE source_id=? AND target_id=? AND kind=? AND deleted=0",
-                (source["id"], target["id"], kind),
+                "SELECT * FROM edges WHERE ((source_id=? AND target_id=?) OR (?='related' AND source_id=? AND target_id=?)) AND kind=? AND deleted=0",
+                (source["id"], target["id"], kind, target["id"], source["id"], kind),
             ).fetchone()
             if "expected_revision" in body and body["expected_revision"] != (
                 existing["revision"] if existing else 0
             ):
                 raise Problem("Graph changed", 409)
             if existing:
+                if explicit:
+                    self.set_setting("explicit_edge:" + existing["id"], True)
                 return dict(existing)
             edge = dict(id=uid(), source_id=source["id"], target_id=target["id"], kind=kind, revision=1)
             self.db.execute(
                 "INSERT INTO edges(id,source_id,target_id,kind,revision) VALUES(:id,:source_id,:target_id,:kind,:revision)",
                 edge,
             )
+            self.set_setting("explicit_edge:" + edge["id"], explicit)
             connection = self.db.execute(
                 "SELECT connection FROM items WHERE id=?", (source["id"],)
             ).fetchone()[0]
-            if connection:
+            if connection and explicit:
                 self.db.execute(
                     "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
                     (
@@ -479,6 +511,15 @@ class Store:
         self.item(row["target_id"])
         if row["revision"] != revision:
             raise Problem("Relationship changed", 409)
+        from .graph import mentioned
+
+        for note_id, resource_id in (
+            (row["source_id"], row["target_id"]),
+            (row["target_id"], row["source_id"]),
+        ):
+            note = self.item(note_id)
+            if note["kind"] == "note" and resource_id in mentioned(note["data"]["body"]):
+                raise Problem("Remove the resource mention before removing its relationship")
         self.db.execute("UPDATE edges SET deleted=1,revision=revision+1 WHERE id=?", (edge_id,))
         connection = self.db.execute(
             "SELECT connection FROM items WHERE id=?", (row["source_id"],)

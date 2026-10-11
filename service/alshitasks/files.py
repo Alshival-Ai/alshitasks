@@ -13,7 +13,7 @@ MAX_ATTACHMENT = 20 * 1024 * 1024
 MAX_RESTORE = 64 * 1024**3
 
 
-def attach(store, item_id, name, content):
+def attach(store, item_id, name, content, replaces=None):
     store.item(item_id)
     from .workspaces import writable
 
@@ -24,18 +24,73 @@ def attach(store, item_id, name, content):
         data = base64.b64decode(content, validate=True)
     except Exception:
         raise Problem("Invalid attachment encoding")
+    import re
+
+    if re.search(rb"-----BEGIN (?:OPENSSH |RSA |EC |DSA |ENCRYPTED )?PRIVATE KEY-----", data):
+        raise Problem("Use the resource's SSH settings for private keys; keys stay on this computer")
     if len(data) > MAX_ATTACHMENT:
         raise Problem("Attachment exceeds 20 MiB", 413)
-    ident = uid()
+    ident = replaces or uid()
+    if replaces:
+        old = store.db.execute("SELECT item_id FROM attachments WHERE id=?", (replaces,)).fetchone()
+        if not old or old[0] != item_id:
+            raise Problem("Attachment unavailable", 404)
+        job = store.setting("file_job:" + ident, {})
+        if job and job.get("state") != "sent":
+            raise Problem("Wait for this attachment transfer before replacing it", 409)
+        prior = store.paths.attachments / ident
+        if prior.exists():
+            shutil.copyfile(prior, store.paths.attachments / (ident + ".previous"))
+            prior.unlink()
     p = store.paths.attachments / ident
     with p.open("xb") as f:
         f.write(data)
     p.chmod(0o600)
     store.db.execute(
-        "INSERT INTO attachments VALUES(?,?,?,?,?)",
+        "INSERT OR REPLACE INTO attachments VALUES(?,?,?,?,?)",
         (ident, item_id, Path(name).name, len(data), hashlib.sha256(data).hexdigest()),
     )
+    connection = store.db.execute("SELECT connection FROM items WHERE id=?", (item_id,)).fetchone()[0]
+    if connection:
+        store.set_setting(
+            "file_job:" + ident,
+            dict(
+                id=ident,
+                upload_id=uid(),
+                connection=connection,
+                item_id=item_id,
+                name=Path(name).name,
+                size=len(data),
+                sha256=hashlib.sha256(data).hexdigest(),
+                state="queued",
+            ),
+        )
+    store.set_setting("file_deleted:" + ident, False)
+    store.sync_wake.set()
     return dict(id=ident, name=Path(name).name, size=len(data))
+
+
+def resolve_attachment(store, ident):
+    """Preserve a conflicting local replacement as a separate synced attachment."""
+    from .workspaces import writable
+
+    row = store.db.execute("SELECT * FROM attachments WHERE id=?", (ident,)).fetchone()
+    if not row:
+        raise Problem("Attachment unavailable", 404)
+    writable(store, row["item_id"])
+    job = store.setting("file_job:" + ident, {})
+    if job.get("state") != "conflict":
+        raise Problem("Attachment is not awaiting review", 409)
+    result = None
+    if job.get("operation") != "delete":
+        content = base64.b64encode((store.paths.attachments / ident).read_bytes()).decode()
+        name = Path(row["name"])
+        result = attach(store, row["item_id"], name.stem[:170] + " (local copy)" + name.suffix[:20], content)
+    job.update(state="sent", error="", next=0)
+    store.set_setting("file_job:" + ident, job)
+    store.set_setting("file_deleted:" + ident, False)
+    store.sync_wake.set()
+    return {"preserved": result, "portal_download_pending": True}
 
 
 def backup(store, logs, destination):

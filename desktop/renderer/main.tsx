@@ -118,8 +118,13 @@ function App() {
   }
   useEffect(() => {
     void refresh().catch((e) => setError(e.message));
-    const t = setInterval(() => void refresh().catch(() => {}), 5000);
-    return () => clearInterval(t);
+    const update = () => void refresh().catch(() => {});
+    const unsubscribe = window.tasks.onChanged(update);
+    const t = setInterval(update, 30000);
+    return () => {
+      clearInterval(t);
+      unsubscribe();
+    };
   }, []);
   useEffect(() => {
     const saved = readDeviceState(
@@ -530,41 +535,20 @@ function App() {
                 ))}
                 <h3>Conflicting edits</h3>
                 {conflicts.map((c) => (
-                  <section key={c.id}>
-                    <h3>{JSON.parse(c.local).data?.title ?? "Conflict"}</h3>
-                    <div className="grid">
-                      <pre>
-                        {JSON.stringify(JSON.parse(c.local).data, null, 2)}
-                      </pre>
-                      <pre>
-                        {JSON.stringify(JSON.parse(c.remote).data, null, 2)}
-                      </pre>
-                    </div>
-                    <button
-                      onClick={() =>
-                        void work(() =>
-                          api("/v1/conflicts/resolve", "POST", {
-                            id: c.id,
-                            choice: "local",
-                          }),
-                        )
-                      }
-                    >
-                      Keep local draft
-                    </button>
-                    <button
-                      onClick={() =>
-                        void work(() =>
-                          api("/v1/conflicts/resolve", "POST", {
-                            id: c.id,
-                            choice: "remote",
-                          }),
-                        )
-                      }
-                    >
-                      Use shared version
-                    </button>
-                  </section>
+                  <ConflictReview
+                    key={c.id}
+                    conflict={c}
+                    submit={(fields) =>
+                      work(() =>
+                        api("/v1/conflicts/resolve", "POST", {
+                          id: c.id,
+                          choice: "fields",
+                          fields,
+                          revision: c.local_revision,
+                        }),
+                      )
+                    }
+                  />
                 ))}
                 <p>
                   Signing out stops synchronization. Retained offline copies are
@@ -849,3 +833,64 @@ function App() {
   );
 }
 createRoot(document.getElementById("root")!).render(<App />);
+
+function ConflictReview({
+  conflict: c,
+  submit,
+}: {
+  conflict: any;
+  submit: (fields: Record<string, string>) => Promise<any>;
+}) {
+  const [choices, setChoices] = useState<Record<string, string>>({});
+  const fields = Object.keys({
+    ...c.base_data,
+    ...c.local_data,
+    ...c.remote_data,
+  }).filter(
+    (key) =>
+      JSON.stringify(c.local_data[key]) !== JSON.stringify(c.base_data[key]) &&
+      JSON.stringify(c.remote_data[key]) !== JSON.stringify(c.base_data[key]) &&
+      JSON.stringify(c.local_data[key]) !== JSON.stringify(c.remote_data[key]),
+  );
+  useEffect(() => setChoices({}), [c.local_revision, c.remote]);
+  return (
+    <section>
+      <h3>{c.local_data.title || "Conflicting edits"}</h3>
+      <p>
+        Independent edits are combined. Choose a version for each overlapping
+        field.
+      </p>
+      {fields.map((field) => (
+        <fieldset key={field}>
+          <legend>{field}</legend>
+          <details>
+            <summary>Original value</summary>
+            <pre>{JSON.stringify(c.base_data[field], null, 2)}</pre>
+          </details>
+          {(["local", "remote"] as const).map((side) => (
+            <label key={side}>
+              <input
+                type="radio"
+                name={`${c.id}-${field}`}
+                checked={choices[field] === side}
+                onChange={() => setChoices({ ...choices, [field]: side })}
+              />
+              {side === "local" ? "This computer" : "Portal"}
+              <pre>{JSON.stringify(c[side + "_data"][field], null, 2)}</pre>
+            </label>
+          ))}
+        </fieldset>
+      ))}
+      <button
+        disabled={fields.some((field) => !choices[field])}
+        onClick={() =>
+          void submit(
+            Object.fromEntries(fields.map((field) => [field, choices[field]])),
+          )
+        }
+      >
+        Save reviewed version
+      </button>
+    </section>
+  );
+}

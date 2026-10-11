@@ -11,8 +11,16 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.on("tasks:window-state", listener);
       return () => ipcRenderer.removeListener("tasks:window-state", listener);
     },
+    onChanged: (callback) => {
+      const listener = () => callback();
+      ipcRenderer.on("tasks:changed", listener);
+      return () => ipcRenderer.removeListener("tasks:changed", listener);
+    },
     connect: () => ipcRenderer.invoke("tasks:connect"),
-    importAttachment: (item) => ipcRenderer.invoke("tasks:import", item),
+    importAttachment: (item, replaces) =>
+      ipcRenderer.invoke("tasks:import", item, replaces),
+    importSshKey: (resource, settings) =>
+      ipcRenderer.invoke("tasks:ssh-key", resource, settings),
     saveAttachment: (id) => ipcRenderer.invoke("tasks:save-attachment", id),
     backup: () => ipcRenderer.invoke("tasks:backup"),
     restore: () => ipcRenderer.invoke("tasks:restore"),

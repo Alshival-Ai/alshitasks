@@ -94,3 +94,22 @@ Exact installed X11 editing/navigation checks pass. A Wayland layout inspection
 confirms notes left/timeline right at desktop width, notes above timeline at 760px,
 and no page overflow. The compact schedule omits Gantt controls.
 Artifact SHA-256: `d296818ab6ae01d1da7f4fa057057a884077a492196687b2a3f24f44b1146e80`.
+
+## Unreleased graph sync, attachments and local SSH
+
+Source validation on 2026-10-10/11: 64 isolated desktop service tests pass;
+TypeScript/Vite build and source Electron editing/navigation checks pass. The portal
+regression suite passed 54 tests with one skipped, including two isolated desktop
+profiles converging through the real portal adapter, consistent pagination, file
+transfer/replacement/deletion, access revocation and unchanged Neural Labs projection
+regressions. Additional transfer-expiry validation is recorded after the final run.
+
+New tests cover exact retries after lost replies, independent-field conflict review,
+resumed downloads, graph mention translation, cross-board relationships, capability
+refresh, keeping both conflicting files, and private SSH keys remaining local.
+These fixtures do not connect to a real SSH host or upload user files.
+
+This source is not installed or deployed. Pending release gates: PostgreSQL execution,
+large-workspace latency measurements, live SSE/proxy and OAuth acceptance, scanner
+availability on the target portal, and packaged upgrade/graphical-machine checks.
+The existing 0.1.7 package remains installed. No new immutable release is published.

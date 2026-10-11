@@ -95,6 +95,8 @@ class API:
             from .workspaces import catalog
 
             return {"workspaces": catalog(s)}
+        if path == "/v1/revision" and owner:
+            return {"revision": s.db.total_changes}
         if path == "/v1/health":
             return {"ok": True, "version": "0.1.4"}
         if path == "/v1/mcp":
@@ -134,7 +136,7 @@ class API:
                     "boards": [
                         s.row(r)
                         for r in s.db.execute("SELECT * FROM items WHERE kind='board'")
-                        if visible(s, r["connection"])
+                        if visible(s, r["connection"]) and not s.setting("unavailable:" + r["id"], False)
                     ]
                 }
             if suffix == "/members":
@@ -298,23 +300,63 @@ class API:
             return {"stopping": True}
         if path == "/v1/attachments":
             if method == "GET":
+                s.item(q.get("item_id"))
                 return {
                     "attachments": [
-                        dict(r)
+                        dict(
+                            r,
+                            sync=s.setting(
+                                "file_job:" + r["id"],
+                                {"state": "synced"} if s.setting("file_remote:" + r["id"]) else {},
+                            ),
+                        )
                         for r in s.db.execute(
                             "SELECT * FROM attachments WHERE item_id=?", (q.get("item_id"),)
                         )
+                        if not s.setting("file_deleted:" + r["id"], False)
+                        or s.setting("file_job:" + r["id"], {}).get("state") == "conflict"
                     ]
                 }
             if method == "POST":
-                return files.attach(s, body["item_id"], body["name"], body["content"])
+                return files.attach(s, body["item_id"], body["name"], body["content"], body.get("replaces"))
+        if path.startswith("/v1/attachments/") and path.endswith("/review") and method == "POST":
+            return files.resolve_attachment(s, path.split("/")[-2])
+        if path.startswith("/v1/attachments/") and method == "DELETE":
+            ident = path.rsplit("/", 1)[1]
+            row = s.db.execute("SELECT * FROM attachments WHERE id=?", (ident,)).fetchone()
+            if not row:
+                raise Problem("Attachment unavailable", 404)
+            from .workspaces import writable
+
+            writable(s, row["item_id"])
+            job = s.setting("file_job:" + ident, {})
+            if job and job.get("state") != "sent":
+                raise Problem("Wait for the attachment transfer before removing it", 409)
+            connection = s.db.execute(
+                "SELECT connection FROM items WHERE id=?", (row["item_id"],)
+            ).fetchone()[0]
+            if connection:
+                s.set_setting(
+                    "file_job:" + ident,
+                    dict(
+                        id=ident,
+                        upload_id=uid(),
+                        item_id=row["item_id"],
+                        connection=connection,
+                        operation="delete",
+                        state="queued",
+                    ),
+                )
+            s.set_setting("file_deleted:" + ident, True)
+            return {"deleted": True}
         if path.startswith("/v1/attachments/") and method == "GET":
             import base64
 
             ident = path.rsplit("/", 1)[1]
             row = s.db.execute("SELECT * FROM attachments WHERE id=?", (ident,)).fetchone()
-            if not row:
+            if not row or s.setting("file_deleted:" + ident, False):
                 raise Problem("Attachment unavailable", 404)
+            s.item(row["item_id"])
             return {
                 "name": row["name"],
                 "content": base64.b64encode((s.paths.attachments / ident).read_bytes()).decode(),
@@ -322,6 +364,8 @@ class API:
         if path == "/v1/backup" and method == "POST":
             # SQLite backup must be called outside an open write transaction (router handles it).
             return files.backup(s, self.logs, body["path"])
+        if path == "/v1/ssh/key" and method == "POST":
+            return ssh.import_key(s, resource, body["path"], body)
         if path == "/v1/ssh":
             if method == "POST":
                 return ssh.configure(s, resource, body)
@@ -403,11 +447,24 @@ class API:
             return {"queued": True}
         if path == "/v1/conflicts":
             from .workspaces import catalog
+            from .portal import decode
+
+            def review(row):
+                result = dict(row)
+                base = json.loads(row["base"])
+                result["base_data"] = decode(s, row["connection"], base)["data"] if base else {}
+                result["remote_data"] = decode(s, row["connection"], json.loads(row["remote"]))["data"]
+                current = s.db.execute(
+                    "SELECT revision,data FROM items WHERE id=?", (row["item_id"],)
+                ).fetchone()
+                result["local_data"] = json.loads(current["data"])
+                result["local_revision"] = current["revision"]
+                return result
 
             allowed = {w["id"] for w in catalog(s)}
             return {
                 "conflicts": [
-                    dict(r)
+                    review(r)
                     for r in s.db.execute("SELECT * FROM conflicts WHERE resolved=0")
                     if r["connection"] in allowed
                 ]

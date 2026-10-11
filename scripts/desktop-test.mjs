@@ -146,6 +146,43 @@ try {
     );
   });
   await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Offline resource", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Resource content" })
+    .getByRole("button", { name: "Settings", exact: true })
+    .click();
+  const sshSettings = page
+    .locator("section.connected-resource-settings")
+    .filter({
+      has: page.getByRole("heading", { name: "SSH on this computer" }),
+    });
+  await sshSettings
+    .getByLabel("Host", { exact: true })
+    .fill("fixture.example.invalid");
+  await sshSettings.getByLabel("Username", { exact: true }).fill("fixture");
+  await sshSettings
+    .getByRole("button", { name: "Use SSH agent", exact: true })
+    .click();
+  await sshSettings
+    .getByRole("button", { name: "Open terminal", exact: true })
+    .waitFor();
+  assert.match(
+    execFileSync("cat", [path.join(root, "home/.ssh/alshitasks.conf")], {
+      encoding: "utf8",
+    }),
+    /HostName fixture.example.invalid/,
+  );
+  await sshSettings
+    .getByRole("button", { name: "Remove local configuration", exact: true })
+    .click();
+  await page.waitForFunction(
+    async () => (await window.tasks.request("/v1/ssh")).aliases.length === 0,
+  );
+  await page
+    .getByRole("button", { name: "Collapse resource", exact: true })
+    .click();
   for (const name of [
     "Graph",
     "Timeline",

@@ -73,7 +73,9 @@ class Acceptance(unittest.TestCase):
             self.store.edge_create(
                 {"source_id": a["id"], "target_id": c["id"], "kind": "depends_on", "idempotency_key": uid()}
             )
-        for source, target in [(c, a), (a, other)]:
+        with self.store.tx():
+            self.store.edge_create({"source_id": a["id"], "target_id": other["id"], "kind":"depends_on", "idempotency_key":uid()})
+        for source, target in [(c, a)]:
             with self.assertRaises(Problem), self.store.tx():
                 self.store.edge_create(
                     {

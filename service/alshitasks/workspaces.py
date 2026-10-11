@@ -66,7 +66,7 @@ def visible(store, connection):
 
 def require_item(store, ident):
     row = store.db.execute("SELECT connection,data FROM items WHERE id=?", (ident,)).fetchone()
-    if not row or not visible(store, row["connection"]):
+    if not row or not visible(store, row["connection"]) or store.setting("unavailable:" + ident, False):
         raise Problem("Record unavailable in this workspace", 404)
     return row
 

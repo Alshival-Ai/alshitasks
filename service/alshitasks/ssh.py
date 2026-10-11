@@ -107,3 +107,31 @@ def open_terminal(store, resource):
         raise Problem("Set a default terminal emulator first", 503)
     subprocess.Popen(["x-terminal-emulator", "-e", "ssh", row["alias"]], start_new_session=True)
     return {"opened": True}
+
+
+def import_key(store, resource, source, body):
+    """Copy a user-selected key into private device storage and configure its alias."""
+    from .paths import private_dir
+    from .store import uid
+    import stat
+
+    if store.item(resource)["kind"] != "resource":
+        raise Problem("SSH keys belong to resources")
+    path = Path(source).expanduser()
+    info = path.lstat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_size > 128 * 1024:
+        raise Problem("Choose a private key file owned by you, up to 128 KiB")
+    content = path.read_bytes()
+    if not re.match(rb"-----BEGIN (?:OPENSSH |RSA |EC |DSA |ENCRYPTED )?PRIVATE KEY-----", content):
+        raise Problem("Choose an OpenSSH or PEM private key")
+    directory = private_dir(store.paths.config / "ssh-keys")
+    destination = directory / uid()
+    with destination.open("xb") as target:
+        os.chmod(destination, 0o600)
+        target.write(content)
+    try:
+        result = configure(store, resource, dict(body, identity_file=str(destination), agent=False))
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return dict(result, local_only=True)

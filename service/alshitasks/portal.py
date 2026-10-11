@@ -94,6 +94,16 @@ def encode_data(store, connection, data):
                 data[field] = store.setting("status_remote:" + data[field], data[field])
             else:
                 raise Problem("Shared record references a local-only record", 409)
+    from .graph import translate
+
+    def reference(ident):
+        row = store.db.execute(
+            "SELECT remote_id FROM items WHERE id=? AND connection=?", (ident, connection)
+        ).fetchone()
+        return row[0] if row else None
+
+    if "body" in data:
+        data["body"] = translate(data["body"], reference, outgoing=True)
     for field in ("assignee", "reviewer"):
         if data.get(field):
             remote_member = store.setting("member_remote:" + connection + ":" + str(data[field]))
@@ -107,6 +117,9 @@ def encode_data(store, connection, data):
 
 def decode(store, connection, record):
     data = dict(DEFAULT, **record["data"])
+    from .graph import translate
+
+    data["body"] = translate(data["body"], lambda ident: cached_item_id(store, connection, ident))
     for f in ("board_id", "parent_id", "status_id"):
         if data.get(f):
             data[f] = (
@@ -144,12 +157,14 @@ class Portal:
     def token(self, c):
         # Rotation is serialized across all workspace views of the same account credential.
         with self.store.lock:
-            return self._token(c)
+            credential = self.store.setting("credential:" + c["id"], c["id"])
+            current = self.connection(c["id"])
+        with self.store.token_lock:
+            return self._token(current, credential)
 
-    def _token(self, c):
+    def _token(self, c, credential):
         if c["state"] not in ("connected", "syncing"):
             raise Problem("Connection is disconnected; sign in again", 401)
-        credential = self.store.setting("credential:" + c["id"], c["id"])
         value = json.loads(Secrets().get(credential))
         if value.get("expires_at", 0) < time.time() + 60:
             if not value.get("refresh_token"):
@@ -384,7 +399,8 @@ class Portal:
                 )
             ]
             if not any(self.store.setting("credential:" + r["id"], r["id"]) == credential for r in active):
-                Secrets().delete(credential)
+                with self.store.token_lock:
+                    Secrets().delete(credential)
             return {"disconnected": True, "local_copies_retained": True}
         token = self.token(c)
         if path == "/v1/portal/workspaces":
@@ -411,6 +427,42 @@ class Portal:
         raise Problem("Portal endpoint unavailable", 404)
 
 
+def send_job(store, c, prefix, token, transport, job, tool, arguments):
+    key = "request:" + job["id"]
+    with store.tx():
+        request = store.setting(key)
+        if request is None:
+            arguments = dict(arguments, idempotency_key=uid())
+            request = {"tool": tool, "arguments": arguments}
+            store.set_setting(key, request)
+    try:
+        return transport(c["origin"], prefix + "/mutations", token, body=request)["result"]
+    except Problem as error:
+        if error.status == 409:
+            # A definitive rejection has no committed receipt; rebase on the next pull.
+            with store.tx():
+                store.set_setting(key, None)
+        raise
+
+
+def acknowledge(store, job, result):
+    store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
+    store.set_setting("remote_base:" + job["item_id"], result)
+    later = store.db.execute(
+        "SELECT 1 FROM outbox WHERE item_id=? AND state IN ('queued','draft','conflict') AND id!=?",
+        (job["item_id"], job["id"]),
+    ).fetchone()
+    if not later:
+        observed = store.setting("latest_remote:" + job["item_id"], result)
+        latest = observed if observed.get("revision", 0) > result.get("revision", 0) else result
+        store.set_setting("latest_remote:" + job["item_id"], latest)
+        decoded = decode(store, job["connection"], latest)
+        store.db.execute(
+            "UPDATE items SET data=?,revision=revision+1 WHERE id=?",
+            (json.dumps(decoded["data"]), job["item_id"]),
+        )
+
+
 def sync_connection(store, c, transport=remote, token=None):
     adapter = Portal(store)
     token = token or adapter.token(c)
@@ -425,13 +477,38 @@ def sync_connection(store, c, transport=remote, token=None):
     attachments = []
     status_revisions = {}
     default_board = None
+    v2 = "graph-sync-v2" in json.loads(c["capabilities"]).get("features", [])
+    with store.lock:
+        checkpoint = store.setting("checkpoint:" + c["id"], "") if v2 else ""
+    removed = {}
+    next_checkpoint = None
     while True:
         if cursor in seen:
             raise Problem("Snapshot cursor repeated", 409)
         seen.add(cursor)
-        page = transport(
-            c["origin"], prefix + "/snapshot" + ("?" + urlencode({"cursor": cursor}) if cursor else ""), token
-        )
+        query = {"cursor": cursor or checkpoint}
+        if cursor:
+            query["page"] = "1"
+        try:
+            page = transport(
+                c["origin"],
+                prefix
+                + (
+                    "/sync?" + urlencode(query)
+                    if v2
+                    else "/snapshot" + ("?" + urlencode({"cursor": cursor}) if cursor else "")
+                ),
+                token,
+            )
+        except Problem as error:
+            if v2 and error.status == 410:
+                with store.tx():
+                    store.set_setting("checkpoint:" + c["id"], "")
+                raise Problem("Workspace authorization changed; refreshing its cache", 409)
+            raise
+        for collection, ids in page.get("removed", {}).items():
+            removed.setdefault(collection, []).extend(ids)
+        next_checkpoint = page.get("cursor", next_checkpoint)
         records.extend(page["items"])
         attachments.extend(page.get("attachments", []))
         status_revisions.update(page.get("status_revisions", {}))
@@ -450,10 +527,51 @@ def sync_connection(store, c, transport=remote, token=None):
     # Nothing is committed until every page succeeds. Missing records never delete cached content.
     remote_by_id = {r["id"]: r for r in records}
     with store.tx():
+        if v2:
+            for row in store.db.execute(
+                "SELECT id,remote_id FROM items WHERE connection=? AND remote_id IS NOT NULL", (c["id"],)
+            ):
+                base = store.setting("latest_remote:" + row["id"], store.setting("remote_base:" + row["id"]))
+                if (
+                    base
+                    and row["remote_id"] not in remote_by_id
+                    and row["remote_id"] not in removed.get("items", [])
+                ):
+                    remote_by_id[row["remote_id"]] = base
+            for remote_id in removed.get("items", []):
+                ident = cached_item_id(store, c["id"], remote_id)
+                store.set_setting("unavailable:" + ident, True)
+                store.db.execute(
+                    "UPDATE outbox SET state='draft',reason='Shared record unavailable' WHERE item_id=? AND state='queued'",
+                    (ident,),
+                )
+            for remote_id in removed.get("edges", []):
+                ident = store.setting("edge_local:" + c["id"] + ":" + remote_id, local_id(c["id"], remote_id))
+                store.db.execute("UPDATE edges SET deleted=1 WHERE id=?", (ident,))
+            for remote_id in removed.get("statuses", []):
+                ident = store.setting(
+                    "status_local:" + c["id"] + ":" + remote_id, local_id(c["id"], remote_id)
+                )
+                store.db.execute("DELETE FROM statuses WHERE id=?", (ident,))
+            store.set_setting("checkpoint:" + c["id"], next_checkpoint)
+        for record in records:
+            store.set_setting("unavailable:" + cached_item_id(store, c["id"], record["id"]), False)
+        if v2 and not checkpoint:
+            # A complete, authorized bootstrap may hide stale copies without deleting drafts.
+            for row in store.db.execute(
+                "SELECT id,remote_id FROM items WHERE connection=? AND remote_id IS NOT NULL", (c["id"],)
+            ):
+                if row["remote_id"] not in {r["id"] for r in records}:
+                    store.set_setting("unavailable:" + row["id"], True)
+
         if adapter.connection(c["id"])["state"] != "connected":
             return
-        if members:
-            cached_members = []
+        if members or removed.get("members") or (v2 and not checkpoint):
+            cached_members = store.setting("members:" + c["id"], []) if v2 and checkpoint else []
+            changed_members = {"member:" + local_id(c["id"], str(m["id"])) for m in members} | {
+                "member:" + local_id(c["id"], str(i)) for i in removed.get("members", [])
+            }
+            cached_members = [m for m in cached_members if m["id"] not in changed_members]
             for member in members:
                 mapped = "member:" + local_id(c["id"], str(member["id"]))
                 store.set_setting("member_remote:" + c["id"] + ":" + mapped, member["id"])
@@ -502,6 +620,7 @@ def sync_connection(store, c, transport=remote, token=None):
                 "SELECT id FROM items WHERE connection=? AND remote_id=?", (c["id"], record["id"])
             ).fetchone()
             ident = existing_map["id"] if existing_map else local_id(c["id"], record["id"])
+            store.set_setting("latest_remote:" + ident, record)
             pending = store.db.execute(
                 "SELECT 1 FROM outbox WHERE item_id=? AND state IN ('queued','conflict','draft')", (ident,)
             ).fetchone()
@@ -520,8 +639,8 @@ def sync_connection(store, c, transport=remote, token=None):
                     rev,
                     json.dumps(decoded["data"]),
                     decoded["author_id"],
-                    record.get("created_at", now()),
-                    record.get("updated_at", now()),
+                    record.get("created_at") or now(),
+                    record.get("updated_at") or now(),
                     c["id"],
                     record["id"],
                 ),
@@ -535,7 +654,15 @@ def sync_connection(store, c, transport=remote, token=None):
                 or not store.db.execute("SELECT 1 FROM items WHERE id=?", (target,)).fetchone()
             ):
                 continue
-            edge_id = store.setting("edge_local:" + c["id"] + ":" + edge["id"], local_id(c["id"], edge["id"]))
+            existing_edge = store.db.execute(
+                "SELECT id FROM edges WHERE kind=? AND ((source_id=? AND target_id=?) OR (?='related' AND source_id=? AND target_id=?)) ORDER BY deleted LIMIT 1",
+                (edge["kind"], source, target, edge["kind"], target, source),
+            ).fetchone()
+            edge_id = store.setting(
+                "edge_local:" + c["id"] + ":" + edge["id"],
+                existing_edge["id"] if existing_edge else local_id(c["id"], edge["id"]),
+            )
+            store.set_setting("edge_local:" + c["id"] + ":" + edge["id"], edge_id)
             queued = store.db.execute(
                 "SELECT 1 FROM outbox WHERE connection=? AND state IN ('queued','conflict','draft') AND json_extract(payload,'$.edge.id')=?",
                 (c["id"], edge_id),
@@ -559,22 +686,34 @@ def sync_connection(store, c, transport=remote, token=None):
                 "SELECT * FROM outbox WHERE connection=? AND state='queued' ORDER BY rowid", (c["id"],)
             )
         ]
-    from .sync_files import download_attachments
-
-    download_attachments(store, c, attachments, transport, token)
+    # File I/O has its own worker; failed transfers never prevent graph uploads.
+    with store.tx():
+        queued_files = (
+            {a["id"]: a for a in store.setting("attachment_queue:" + c["id"], [])}
+            if v2 and checkpoint
+            else {}
+        )
+        queued_files.update({a["id"]: a for a in attachments})
+        for ident in removed.get("attachments", []):
+            queued_files.pop(ident, None)
+        store.set_setting("attachment_queue:" + c["id"], list(queued_files.values()))
     for job in pending:
+        with store.lock:
+            blocked = store.db.execute(
+                "SELECT 1 FROM outbox WHERE item_id=? AND state IN ('conflict','draft') AND json_extract(payload,'$.operation') IS NULL",
+                (job["item_id"],),
+            ).fetchone()
+        if blocked:
+            continue
         with store.lock:
             if adapter.connection(c["id"])["state"] != "connected":
                 return
         payload = json.loads(job["payload"])
         if payload.get("operation") == "project_status_write":
             try:
-                result = transport(
-                    c["origin"],
-                    prefix + "/mutations",
-                    token,
-                    body={"tool": "project_status_write", "arguments": payload["arguments"]},
-                )["result"]
+                result = send_job(
+                    store, c, prefix, token, transport, job, "project_status_write", payload["arguments"]
+                )
                 with store.tx():
                     store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
                     store.set_setting("status_catalog:" + c["id"], result["revision"])
@@ -633,9 +772,7 @@ def sync_connection(store, c, transport=remote, token=None):
                     continue
                 args.update(id=remote_edge["id"], revision=remote_edge["revision"])
             try:
-                result = transport(
-                    c["origin"], prefix + "/mutations", token, body={"tool": operation, "arguments": args}
-                )["result"]
+                result = send_job(store, c, prefix, token, transport, job, operation, args)
                 with store.tx():
                     store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
                     store.set_setting("remote_edge:" + edge["id"], result)
@@ -670,19 +807,16 @@ def sync_connection(store, c, transport=remote, token=None):
                 continue
         if remote_id is None and base is None:
             try:
-                result = transport(
-                    c["origin"],
-                    prefix + "/mutations",
+                result = send_job(
+                    store,
+                    c,
+                    prefix,
                     token,
-                    body={
-                        "tool": "project_create",
-                        "arguments": {
-                            "kind": local["kind"],
-                            "idempotency_key": job["id"],
-                            "data": local_data,
-                        },
-                    },
-                )["result"]
+                    transport,
+                    job,
+                    "project_create",
+                    {"kind": local["kind"], "data": local_data},
+                )
                 with store.tx():
                     duplicate = store.db.execute(
                         "SELECT id FROM items WHERE connection=? AND remote_id=? AND id!=?",
@@ -740,6 +874,21 @@ def sync_connection(store, c, transport=remote, token=None):
                     (job["id"],),
                 )
             continue
+        with store.lock:
+            inflight = store.setting("request:" + job["id"])
+        if inflight:
+            try:
+                result = send_job(
+                    store, c, prefix, token, transport, job, inflight["tool"], inflight["arguments"]
+                )
+                with store.tx():
+                    acknowledge(store, job, result)
+                    remote_by_id[remote_id] = result
+                continue
+            except Problem as error:
+                if error.status == 409:
+                    continue
+                raise
         merged = merge(base.get("data", {}) if base else {}, local_data, shared["data"])
         if merged is None:
             with store.tx():
@@ -754,25 +903,20 @@ def sync_connection(store, c, transport=remote, token=None):
         changed = {k: v for k, v in merged.items() if v != shared["data"].get(k)}
         try:
             if changed:
-                result = transport(
-                    c["origin"],
-                    prefix + "/mutations",
+                result = send_job(
+                    store,
+                    c,
+                    prefix,
                     token,
-                    body={
-                        "tool": "project_update",
-                        "arguments": {
-                            "id": remote_id,
-                            "revision": shared["revision"],
-                            "idempotency_key": job["id"],
-                            "data": changed,
-                        },
-                    },
-                )["result"]
+                    transport,
+                    job,
+                    "project_update",
+                    {"id": remote_id, "revision": shared["revision"], "data": changed},
+                )
             else:
                 result = shared
             with store.tx():
-                store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
-                store.set_setting("remote_base:" + job["item_id"], result)
+                acknowledge(store, job, result)
                 remote_by_id[remote_id] = result
         except Problem as e:
             if e.status in (401, 403):
@@ -851,6 +995,57 @@ def resolve_conflict(store, body):
     c = store.db.execute("SELECT * FROM conflicts WHERE id=? AND resolved=0", (body["id"],)).fetchone()
     if not c:
         raise Problem("Conflict unavailable", 404)
+    if body.get("choice") == "fields":
+        base = json.loads(c["base"])
+        local = json.loads(c["local"])
+        remote_record = json.loads(c["remote"])
+        shared = decode(store, c["connection"], remote_record)
+        base_data = decode(store, c["connection"], base)["data"] if base else {}
+        current = store.item(c["item_id"])
+        if body.get("revision") != current["revision"]:
+            raise Problem("Local record changed; review again", 409)
+        local["data"] = current["data"]
+        choices = body.get("fields", {})
+        merged = dict(shared["data"])
+        conflicts = {
+            key
+            for key in set(base_data) | set(local["data"]) | set(shared["data"])
+            if local["data"].get(key) != base_data.get(key)
+            and shared["data"].get(key) != base_data.get(key)
+            and local["data"].get(key) != shared["data"].get(key)
+        }
+        if set(choices) != conflicts or any(v not in ("local", "remote") for v in choices.values()):
+            raise Problem("Choose a version for every conflicting field")
+        for key in set(base_data) | set(local["data"]):
+            if local["data"].get(key) != base_data.get(key) and (
+                key not in conflicts or choices[key] == "local"
+            ):
+                merged[key] = local["data"].get(key)
+        # All queued edits are retained in the conflict history; require the latest local
+        # value to be reviewed rather than discarding subsequent edits silently.
+        if current["data"] != local["data"]:
+            raise Problem("New local edits exist; refresh the conflict before resolving", 409)
+        store.db.execute(
+            "UPDATE outbox SET state='discarded' WHERE item_id=? AND state IN ('conflict','queued') AND json_extract(payload,'$.operation') IS NULL",
+            (c["item_id"],),
+        )
+        store.db.execute(
+            "UPDATE items SET data=?,revision=revision+1 WHERE id=?", (json.dumps(merged), c["item_id"])
+        )
+        store.db.execute(
+            "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
+            (
+                uid(),
+                c["connection"],
+                c["item_id"],
+                json.dumps(shared),
+                json.dumps(dict(current, data=merged)),
+            ),
+        )
+        store.set_setting("remote_base:" + c["item_id"], remote_record)
+        store.db.execute("UPDATE conflicts SET resolved=1 WHERE id=?", (c["id"],))
+        store.sync_wake.set()
+        return {"resolved": True}
     if body.get("choice") not in ("local", "remote"):
         raise Problem("Choose local or remote")
     if body["choice"] == "remote":
