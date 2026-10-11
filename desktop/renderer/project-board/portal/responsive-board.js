@@ -169,12 +169,6 @@ window.AlshivalResponsiveBoard = (root, lifecycle, actions) => {
     }
   }
   const pixels = value => parseFloat(value) || 0;
-  const median = values => {
-    if (!values.length) return 0;
-    const sorted = [...values].sort((a, b) => a - b);
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
-  };
   const outerHeight = element => {
     const style = getComputedStyle(element);
     return element.getBoundingClientRect().height + pixels(style.marginTop) + pixels(style.marginBottom);
@@ -195,27 +189,22 @@ window.AlshivalResponsiveBoard = (root, lifecycle, actions) => {
         const stack = column.querySelector('.sp-stack');
         const items = [...stack.children].filter(item => !item.hidden && getComputedStyle(item).display !== 'none');
         const gap = pixels(getComputedStyle(stack).rowGap);
-        const cards = items.filter(item => item.matches('.sp-card, [data-project-card]')).map(outerHeight);
+        const cards = items.filter(item => item.matches('.sp-card, [data-project-card]')).slice(0, 3);
+        const preview = cards.length ? cards : items.slice(0, 3);
         const itemHeight = items.reduce((total, item) => total + outerHeight(item), 0);
         const chrome = blockChrome(column) + outerHeight(column.querySelector(':scope > header')) + blockChrome(stack);
         return {
-          cards,
-          chrome,
-          demand: chrome + itemHeight + Math.max(0, items.length - 1) * gap,
-          gap
+          collapsed: chrome + preview.reduce((total, item) => total + outerHeight(item), 0) + Math.max(0, preview.length - 1) * gap,
+          demand: chrome + itemHeight + Math.max(0, items.length - 1) * gap
         };
       });
     if (!measurements.length) return 0;
     const demands = measurements.map(item => item.demand).sort((a, b) => a - b);
     const tallest = demands.at(-1);
     if (root.hasAttribute('data-board-expanded')) return Math.ceil(tallest + blockChrome(surface));
-    const representative = demands.at(-2) ?? tallest;
-    const cardHeight = median(measurements.flatMap(item => item.cards));
-    const threeCardFloor = cardHeight
-      ? median(measurements.map(item => item.chrome)) + cardHeight * 3 + median(measurements.map(item => item.gap)) * 2
-      : representative;
-    // Ignore one outlying column, but never make a short board taller than its natural content.
-    const columnHeight = Math.min(tallest, Math.max(representative, threeCardFloor));
+    // Fit the first three cards, including their actual wrapped content. Short
+    // boards retain their natural height; additional cards scroll within columns.
+    const columnHeight = Math.min(tallest, Math.max(...measurements.map(item => item.collapsed)));
     return Math.ceil(columnHeight + blockChrome(surface));
   }
   function measure() {
