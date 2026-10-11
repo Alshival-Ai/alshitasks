@@ -106,3 +106,26 @@ notification navigation IDs. `notifications_read` shares the portal's read-only
 schema. Portal cache refresh is serialized per store and revalidates live visibility
 before agent reads. Account changes fence remote responses. The portal desktop API
 only reads/mutates personal notification state; it does not send email or SMS.
+
+### Live delivery
+
+Portals advertising `graph-account-events-v1` use one authenticated outbound SSE
+connection at `/desktop/v1/events` for the entire account. No inbound listener,
+webhook configuration or additional login is needed. Content-free workspace
+revision hints wake checkpoint synchronization; graph data still comes from the
+existing authenticated API. Older portals retain per-workspace SSE with fair
+rotation and polling fallback.
+
+Heartbeats arrive every 15 seconds; the client times out stalled reads after 45
+seconds and reconnects with jitter capped at 30 seconds, respecting Retry-After.
+Reconnect schedules every connected workspace for reconciliation. Pause/sign-out
+interrupt readers and fence stale account generations. Four graph workers use
+fair urgent/poll scheduling; notices received during a pass survive acknowledgement.
+Each workspace reconciles every 27–30 seconds even without live delivery. File
+transfers and account discovery run separately. Existing conflict review and
+unsaved-editor protections remain authoritative.
+
+Settings → Sync details shows delivery health, last sync/notification and retries.
+A live-stream failure displays Reconnecting when HTTP sync still works; an HTTP
+outage displays Offline—changes saved locally. Initial/full snapshots and binary
+file transfers can take longer than a small incremental edit.

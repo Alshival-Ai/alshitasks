@@ -48,7 +48,7 @@ def remote(origin, path, token=None, body=None, form=False):
                 raise Problem("Portal response too large", 413)
             return json.loads(data)
     except urllib.error.HTTPError as e:
-        raise Problem(
+        error = Problem(
             "Portal access rejected"
             if e.code in (401, 403)
             else "Portal revision conflict"
@@ -56,6 +56,9 @@ def remote(origin, path, token=None, body=None, form=False):
             else "Portal request failed",
             e.code,
         )
+        from .live_sync import retry_after
+        error.retry_after = retry_after(e.headers.get("Retry-After"))
+        raise error
     except (ValueError, OSError):
         raise Problem("Portal unavailable; offline edits are retained", 503)
 

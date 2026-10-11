@@ -3,6 +3,7 @@ import {
   WorkspaceList,
   WorkspaceSwitcher,
   HeaderMenu,
+  syncLabel,
 } from "./Workspaces";
 import "./theme.js";
 import { Notifications } from "./Notifications";
@@ -408,18 +409,7 @@ function App() {
               ? "Background paused"
               : workspace === LOCAL_WORKSPACE
                 ? "On this computer"
-                : (() => {
-                    const w = workspaces.find((w) => w.id === workspace);
-                    return w?.state !== "connected"
-                      ? "Offline copy"
-                      : w?.attention
-                        ? "Attention required"
-                        : w?.pending
-                          ? "Pending changes"
-                          : w?.sync === "up-to-date"
-                            ? "Up to date"
-                            : w?.sync || "Waiting to sync";
-                  })()}
+                : syncLabel(workspaces.find((w) => w.id === workspace))}
           </span>
           <Notifications openResource={openNotificationResource} />
           <WindowChrome />
@@ -593,6 +583,52 @@ function App() {
                 )}
                 {accountInfo.status?.error && (
                   <p role="status">{accountInfo.status.error}</p>
+                )}
+                {accountInfo.account && (
+                  <details>
+                    <summary>Sync details</summary>
+                    {workspaces
+                      .filter((w) => !w.local)
+                      .map((w) => (
+                        <p key={w.id}>
+                          <strong>{w.name}</strong>: {syncLabel(w)}
+                          <br />
+                          Last synced:{" "}
+                          {w.last_sync
+                            ? new Date(w.last_sync).toLocaleString()
+                            : "Not yet"}
+                          <br />
+                          Delivery:{" "}
+                          {w.live?.state === "live"
+                            ? "Live updates"
+                            : "Periodic reconciliation"}
+                          {w.live?.last_notification && (
+                            <>
+                              {" "}
+                              · Last notification:{" "}
+                              {new Date(
+                                w.live.last_notification * 1000,
+                              ).toLocaleString()}
+                            </>
+                          )}
+                          {(w.retry_at || w.live?.next_retry) && (
+                            <>
+                              {" "}
+                              · Retry:{" "}
+                              {new Date(
+                                (w.retry_at || w.live?.next_retry || 0) * 1000,
+                              ).toLocaleTimeString()}
+                            </>
+                          )}
+                          {w.error && (
+                            <>
+                              <br />
+                              {w.error}
+                            </>
+                          )}
+                        </p>
+                      ))}
+                  </details>
                 )}
                 {accountInfo.account && (
                   <section aria-labelledby="publish-heading">

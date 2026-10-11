@@ -10,11 +10,35 @@ export type Workspace = {
   sync?: string;
   pending?: number;
   attention?: number;
+  incoming?: boolean;
+  last_sync?: string;
+  retry_at?: number;
+  error?: string;
+  live?: {
+    state?: string;
+    heartbeat?: number;
+    last_notification?: number;
+    next_retry?: number;
+  };
   unread?: number;
   settings_url?: string;
   portal_origin?: string;
   scopes?: string[];
 };
+export function syncLabel(w?: Workspace) {
+  if (!w) return "Waiting to sync";
+  if (w.local) return "On this computer";
+  if (w.state === "revoked") return "Sign-in required";
+  if (w.state !== "connected") return "Offline copy";
+  if (w.sync === "offline") return "Offline—changes saved locally";
+  if (w.attention) return "Needs review";
+  if (w.sync === "rate-limited") return "Sync delayed—retrying automatically";
+  if (w.sync === "attention") return "Attention required";
+  if (w.pending || w.incoming || w.sync === "syncing") return "Syncing";
+  if (w.live?.state === "reconnecting") return "Reconnecting";
+  return w.sync === "up-to-date" ? "Up to date" : "Waiting to sync";
+}
+
 export function workspaceSettings(workspace: Workspace) {
   if (
     !workspace.settings_url ||
@@ -270,19 +294,7 @@ export function WorkspaceDirectory({
             {typeof w.unread === "number" && w.unread > 0 && (
               <span className="wd-badge">{w.unread} unread</span>
             )}
-            {!w.local && (
-              <span className="wd-badge">
-                {w.state !== "connected"
-                  ? "Offline copy"
-                  : w.attention
-                    ? "Attention required"
-                    : w.pending
-                      ? "Pending changes"
-                      : w.sync === "up-to-date"
-                        ? "Up to date"
-                        : w.sync || "Waiting to sync"}
-              </span>
-            )}
+            {!w.local && <span className="wd-badge">{syncLabel(w)}</span>}
             <WorkspaceBoards workspace={w} select={selectBoard} />
             <button
               className="wd-open button btn matrix-btn"

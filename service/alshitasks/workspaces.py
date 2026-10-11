@@ -29,6 +29,8 @@ def catalog(store):
         pending = tally['pending'] if tally else 0
         trouble = tally['trouble'] if tally else 0
         health = store.setting("sync:" + r["id"], {})
+        live = store.setting("live:" + store.setting("credential:" + r["id"], r["id"]), {})
+        incoming = int(store.setting("sync_notice:" + r["id"], 0)) > store.setting("sync_ack:" + r["id"], 0)
         rows.append(
             {
                 "id": r["id"],
@@ -42,6 +44,9 @@ def catalog(store):
                 "state": r["state"],
                 "scopes": meta.get("scopes", []),
                 "last_sync": r["cursor"],
+                "live": live,
+                "incoming": incoming,
+                "retry_at": health.get("next"),
                 "pending": pending,
                 "attention": trouble,
                 "sync": health.get("state", "pending"),

@@ -1,14 +1,11 @@
 """Independent graph, attachment and notification workers with bounded concurrency."""
 
-import json
 import random
 import threading
 import time
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from .store import Problem
 from .portal import Portal, remote, sync_connection
-from .monitoring import NoRedirect
 
 
 def connections(store):
@@ -19,59 +16,81 @@ def connections(store):
         ]
 
 
-def sync_one(store, connection, force=False):
+def due(store, connection):
+    """Called under the store lock. Backoff applies to both push and polling."""
     from datetime import datetime
+    ident = connection["id"]
+    schedule = store.setting("sync:" + ident, {})
+    if schedule.get("next", 0) > time.time():
+        return None
+    pending = store.db.execute("SELECT 1 FROM outbox WHERE connection=? AND state='queued'", (ident,)).fetchone()
+    generation = int(store.setting("sync_notice:" + ident, 0))
+    if pending or generation > store.setting("sync_ack:" + ident, 0):
+        return "urgent"
+    last = datetime.fromisoformat(connection["cursor"]).timestamp() if connection["cursor"] else 0
+    if time.time() >= schedule.get("poll_at", last + 30):
+        return "poll"
+    return None
 
+
+def sync_one(store, connection, force=False):
+    ident = connection["id"]
     with store.lock:
-        schedule = store.setting("sync:" + connection["id"], {})
-        pending = store.db.execute(
-            "SELECT 1 FROM outbox WHERE connection=? AND state='queued'", (connection["id"],)
-        ).fetchone()
-        pushed = store.setting("sync_notice:" + connection["id"], False)
-    if not force and schedule.get("next", 0) > time.time():
-        return
-    if (
-        not force
-        and not pushed
-        and not pending
-        and connection["cursor"]
-        and time.time() - datetime.fromisoformat(connection["cursor"]).timestamp() < 30
-    ):
-        return
+        if not force and not due(store, connection):
+            return
+        schedule = store.setting("sync:" + ident, {})
+        generation = int(store.setting("sync_notice:" + ident, 0))
     try:
         with store.tx():
-            store.set_setting("sync:" + connection["id"], {"state": "syncing"})
-            store.set_setting("sync_notice:" + connection["id"], False)
+            store.set_setting("sync:" + ident, {"state": "syncing"})
         sync_connection(store, connection)
         with store.tx():
-            store.set_setting("sync:" + connection["id"], {"state": "up-to-date"})
+            store.set_setting("sync_ack:" + ident, generation)
+            store.set_setting("sync:" + ident, {"state": "up-to-date", "poll_at": time.time() + random.uniform(27, 30)})
+        store.sync_wake.set()
     except Exception as error:
         status = error.status if isinstance(error, Problem) else 503
         with store.tx():
             attempt = schedule.get("attempt", 0) + 1
-            store.set_setting(
-                "sync:" + connection["id"],
-                {
-                    "state": "attention" if status in (400, 401, 403, 409, 413) else "offline",
-                    "attempt": attempt,
-                    "next": time.time() + random.uniform(0.75, 1.25) * min(240, 2 ** min(attempt, 8)),
-                    "error": str(error) if isinstance(error, Problem) else "Sync interrupted; retrying",
-                },
-            )
+            delay = max(getattr(error, "retry_after", 0), random.uniform(0.75, 1.25) * min(240, 2 ** min(attempt, 8)))
+            store.set_setting("sync:" + ident, {
+                "state": "attention" if status in (400, 401, 403, 409, 413) else "rate-limited" if status == 429 else "offline",
+                "status": status, "attempt": attempt, "next": time.time() + delay,
+                "error": str(error) if isinstance(error, Problem) else "Sync interrupted; retrying",
+            })
             if status in (401, 403):
-                store.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (connection["id"],))
-                store.db.execute(
-                    "UPDATE outbox SET state='draft',reason='Authorization removed' WHERE connection=? AND state='queued'",
-                    (connection["id"],),
-                )
+                store.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (ident,))
+                store.db.execute("UPDATE outbox SET state='draft',reason='Authorization removed' WHERE connection=? AND state='queued'", (ident,))
+
+
+class Scheduler:
+    """Two urgent slots then one reconciliation slot; oldest dispatched first."""
+    def __init__(self):
+        self.turn = 0
+        self.last = {}
+
+    def choose(self, store, rows, active):
+        groups = {"urgent": [], "poll": []}
+        for row in rows:
+            if row["id"] not in active:
+                reason = due(store, row)
+                if reason:
+                    groups[reason].append(row)
+        preferred = "poll" if self.turn % 3 == 2 else "urgent"
+        candidates = groups[preferred] or groups["urgent" if preferred == "poll" else "poll"]
+        if not candidates:
+            return None
+        chosen = min(candidates, key=lambda row: self.last.get(row["id"], -1))
+        self.last[chosen["id"]] = self.turn
+        self.turn += 1
+        return chosen
 
 
 def graph_loop(api, stop):
     store = api.store
     from .accounts import discover
-
-    active = {}
-    discovery_at = 0
+    active, discovery_at, discovery = {}, 0, None
+    scheduler = Scheduler()
     store.sync_active = set()
 
     def run(connection):
@@ -80,8 +99,9 @@ def graph_loop(api, stop):
         finally:
             with store.lock:
                 store.sync_active.discard(connection["id"])
+            store.sync_wake.set()
 
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="graph-sync") as pool:
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="graph-sync") as pool, ThreadPoolExecutor(max_workers=1, thread_name_prefix="discovery") as discovery_pool:
         while not stop.is_set():
             store.sync_wake.wait(0.25)
             store.sync_wake.clear()
@@ -90,36 +110,20 @@ def graph_loop(api, stop):
                 paused = store.setting("paused", False)
             if paused or stop.is_set():
                 continue
-            if time.monotonic() >= discovery_at and "discovery" not in active and len(active) < 4:
-                active["discovery"] = pool.submit(discover, store)
+            if time.monotonic() >= discovery_at and (discovery is None or discovery.done()):
+                discovery = discovery_pool.submit(discover, store)
                 discovery_at = time.monotonic() + 2
             if not store.sync_lock.acquire(blocking=False):
                 continue
             try:
-                for connection in connections(store):
-                    if len(active) >= 4:
-                        break
-                    if connection["id"] in active:
-                        continue
-                    with store.lock:
-                        from datetime import datetime
-
-                        schedule = store.setting("sync:" + connection["id"], {})
-                        if schedule.get("next", 0) > time.time():
-                            continue
-                        queued = store.db.execute(
-                            "SELECT 1 FROM outbox WHERE connection=? AND state='queued'", (connection["id"],)
-                        ).fetchone()
-                        notice = store.setting("sync_notice:" + connection["id"], False)
-                        if (
-                            connection["cursor"]
-                            and not queued
-                            and not notice
-                            and time.time() - datetime.fromisoformat(connection["cursor"]).timestamp() < 30
-                        ):
-                            continue
+                with store.lock:
+                    rows = connections(store)
+                    while len(active) < 4:
+                        connection = scheduler.choose(store, rows, active)
+                        if connection is None:
+                            break
                         store.sync_active.add(connection["id"])
-                    active[connection["id"]] = pool.submit(run, connection)
+                        active[connection["id"]] = pool.submit(run, connection)
             finally:
                 store.sync_lock.release()
 
@@ -164,48 +168,5 @@ def file_loop(api, stop):
                     )
 
 
-def notices(store, connection, stop):
-    attempt = 0
-    while not stop.is_set():
-        try:
-            with store.lock:
-                active = Portal(store).connection(connection["id"])["state"] == "connected"
-                paused = store.setting("paused", False)
-            if not active:
-                return
-            if paused:
-                stop.wait(2)
-                continue
-            token = Portal(store).token(connection)
-            request = urllib.request.Request(
-                connection["origin"] + "/desktop/v1/workspaces/" + connection["workspace"] + "/events",
-                headers={"Authorization": "Bearer " + token, "Accept": "text/event-stream"},
-            )
-            with urllib.request.build_opener(NoRedirect).open(request, timeout=20) as stream:
-                for line in stream:
-                    if stop.is_set():
-                        return
-                    if line.startswith(b"event: changed"):
-                        with store.tx():
-                            store.set_setting("sync_notice:" + connection["id"], True)
-                        store.sync_wake.set()
-                        attempt = 0
-            attempt += 1
-        except Exception:
-            attempt += 1
-        stop.wait(random.uniform(0.75, 1.25) * min(30, 2 ** min(attempt, 5)))
-
-
-def notification_loop(api, stop):
-    active = {}
-    while not stop.wait(2):
-        active = {key: thread for key, thread in active.items() if thread.is_alive()}
-        for connection in connections(api.store):
-            if len(active) >= 4:
-                break
-            if connection["id"] not in active and "graph-events-v2" in json.loads(
-                connection["capabilities"]
-            ).get("features", []):
-                thread = threading.Thread(target=notices, args=(api.store, connection, stop), daemon=True)
-                active[connection["id"]] = thread
-                thread.start()
+# Kept as the service entrypoint; listener lifecycle is isolated from graph work.
+from .live_sync import notification_loop
