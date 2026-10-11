@@ -41,3 +41,7 @@ Settings exports SQLite-consistent backups plus all managed attachments and logs
 Public release requires clean-machine installation and a data-preserving upgrade rehearsal. Do not update the team provisioning package before pilot acceptance. Portal billing, tickets, private chat and administration are outside this app.
 
 Sign-in uses the fixed Alshival.Ai portal origin. No URL configuration is needed; every user authorizes their own account in the system browser.
+
+### Automatic stable releases
+
+Every push to `main` builds and tests a Debian release. CI uses the package version when it exceeds all existing release versions; otherwise it allocates the next patch version. Generated package/lock versions stay in CI, and the immutable release points to the exact source commit. Rerunning an already published commit skips publication. Failed builds do not publish. Alshival machines install published releases through their system updater; open desktop windows load the new UI when reopened.
