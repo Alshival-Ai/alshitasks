@@ -150,8 +150,10 @@ def file_loop(api, stop):
                 with store.lock:
                     files = store.setting("attachment_queue:" + connection["id"], [])
                 token = Portal(store).token(connection)
-                upload_attachments(store, connection, remote, token)
-                download_attachments(store, connection, files, remote, token)
+                from .managed import guarded_transport
+                transport, check = guarded_transport(store, connection, remote)
+                upload_attachments(store, connection, transport, token)
+                download_attachments(store, connection, files, transport, token)
                 with store.tx():
                     store.set_setting("files:" + connection["id"], {"state": "synced"})
             except Exception:

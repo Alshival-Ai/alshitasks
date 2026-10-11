@@ -4,7 +4,7 @@
 - `desktop/main.cjs` and `preload.cjs`: Electron main process, sandboxed renderer, isolated context and a narrow IPC bridge. External links and OAuth use the system browser. Native dialogs own attachment/backup file selection.
 - `service/alshitasks`: per-user Python background service. Standard-library SQLite avoids a native Node ABI dependency. Separate task and log databases use WAL. Migration transactions reject newer schemas rather than downgrading.
 - `store.py`: graph identities/revisions, authorship, explicit tombstones, dependency-cycle checks, replay receipts and transactional offline outbox.
-- `security.py`: hashed local grants and Linux Secret Service access. No plaintext credential fallback.
+  - `security.py`: hashed local grants and Linux Secret Service access. No plaintext credential fallback.
 - `portal.py`: optional native OAuth PKCE, exact state/issuer callback validation, authorization-code and refresh resource binding, account/workspace-isolated caches, bounded complete snapshots and three-way merge. Clock timestamps do not determine shared edit winners. Rejected changes remain drafts.
 - `monitoring.py`, `logs.py`, `ssh.py`, `files.py`: local execution, incident history, bounded ingestion/forwarding, app-managed aliases and verified backups. These settings and private file paths never enter graph sync.
 
@@ -71,3 +71,28 @@ delete imported key material. Another computer requires its own SSH setup.
 
 Source updates alone do not activate the matching portal endpoints. An older portal
 keeps ordinary file jobs queued locally until it advertises the file capability.
+
+## Managed Ubuntu account connection
+
+Version 0.1.8 adds an explicit enrolled-computer credential provider. Ordinary
+installations still use browser OAuth and Linux Secret Service. On enrolled
+Alshival computers the root provisioner owns `/var/lib/alshival/desktop/<uid>`.
+The app verifies every directory's ownership and mode, a root-owned identity
+descriptor, and the SHA-256 of its private credential file. It accepts no
+user-supplied account or environment-variable override for this provider.
+
+The app checks capabilities for the expected account and desktop audience before
+activation, then discovers current permitted workspaces. Reconciliation runs at
+startup and every 30 seconds while sync is enabled. Token rotation preserves
+connection IDs, cursors, conflicts and drafts. Account changes disconnect the old
+connections and retain queued work as drafts; local boards never publish merely
+because the account connects. Worker authorization generations fence old work.
+Settings show Connected through your Ubuntu account; Retry and Pause remain
+available, while account switching and permanent sign-out are managed by IT.
+
+Expired, revoked, incomplete or modified provisioning state fails closed. Local
+data remains available. A locked keyring does not affect this explicit managed
+provider; a failed public OAuth keyring does not activate it. Credentials are never
+stored in the app database or backup. Removing managed policy requires an
+administrator to stop issuance, revoke its portal enrollment, and explicitly
+clear the app's managed-account setting before interactive OAuth is used again.

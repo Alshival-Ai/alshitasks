@@ -37,12 +37,17 @@ class HTTPAcceptance(unittest.TestCase):
 
             def request(method, route, body=None, headers=None):
                 c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
-                c.request(
-                    method,
-                    route,
-                    json.dumps(body) if body is not None else None,
-                    {"Content-Type": "application/json", **(headers or {})},
-                )
+                try:
+                    c.request(
+                        method,
+                        route,
+                        json.dumps(body) if body is not None else None,
+                        {"Content-Type": "application/json", **(headers or {})},
+                    )
+                except BrokenPipeError:
+                    # The server can reject Content-Length before consuming an
+                    # oversized body. Still assert its actual HTTP response.
+                    pass
                 r = c.getresponse()
                 result = (r.status, json.loads(r.read()))
                 c.close()

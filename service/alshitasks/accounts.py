@@ -34,6 +34,9 @@ def activate(store, ident, capabilities):
 
 
 def signout(store):
+    from .managed import enabled
+    if enabled(store):
+        raise Problem('Connected through your Ubuntu account', 409)
     store.set_setting("authorization_generation", store.setting("authorization_generation", 0) + 1)
     for pending in store.db.execute("SELECT id FROM connections WHERE state='authorizing'").fetchall():
         store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (pending[0],))
@@ -60,6 +63,8 @@ def signout(store):
 
 
 def discover(store, transport=None):
+    from .managed import reconcile
+    reconcile(store, transport)
     from .portal import Portal, remote
 
     transport = transport or remote
@@ -135,8 +140,10 @@ def discover(store, transport=None):
 
 
 def dispatch(store, path, method, body):
+    from .managed import enabled
     if path == "/v1/portal/account" and method == "GET":
         return {
+            "managed": enabled(store),
             "account": store.setting("active_account"),
             "status": store.setting("discovery", {}),
             "offer_publish": store.setting("publish_offer", False),
@@ -144,6 +151,7 @@ def dispatch(store, path, method, body):
     if path == "/v1/portal/signout" and method == "POST":
         return signout(store)
     if path == "/v1/portal/retry" and method == "POST":
+        store.set_setting('managed_next', 0)
         store.set_setting("discovery", {"next": 0})
         for r in store.db.execute("SELECT id FROM connections"):
             store.set_setting("sync:" + r[0], {"next": 0})

@@ -333,7 +333,13 @@ function App() {
               <h1>Settings</h1>
               <section aria-labelledby="connections-heading">
                 <h2 id="connections-heading">Alshival.Ai account</h2>
-                {!accountInfo.account ? (
+                {accountInfo.managed && <p>Connected through your Ubuntu account</p>}
+                {!accountInfo.account && accountInfo.managed ? (
+                  <>
+                    <p>Waiting for your Ubuntu account connection. Your local boards are available.</p>
+                    <button onClick={() => void work(() => api('/v1/portal/retry', 'POST', {}))}>Retry connection</button>
+                  </>
+                ) : !accountInfo.account ? (
                   <>
                     <p>
                       Work locally without an account, or sign in to sync your
@@ -358,13 +364,13 @@ function App() {
                     >
                       Sync now
                     </button>
-                    <button
+                    {!accountInfo.managed && <button
                       onClick={() =>
                         void work(() => api("/v1/portal/signout", "POST", {}))
                       }
                     >
                       Sign out
-                    </button>
+                    </button>}
                     <p>
                       All authorized workspaces sync automatically. Local boards
                       stay on this computer until you publish them.

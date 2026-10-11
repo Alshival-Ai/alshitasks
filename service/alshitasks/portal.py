@@ -163,6 +163,9 @@ class Portal:
             return self._token(current, credential)
 
     def _token(self, c, credential):
+        from . import managed
+        if managed.enabled(self.store):
+            return managed.token(self.store, c)
         if c["state"] not in ("connected", "syncing"):
             raise Problem("Connection is disconnected; sign in again", 401)
         value = json.loads(Secrets().get(credential))
@@ -185,6 +188,9 @@ class Portal:
         return value["access_token"]
 
     def connect(self, origin):
+        from . import managed
+        if managed.enabled(self.store):
+            raise Problem('Connected through your Ubuntu account', 409)
         from .accounts import ORIGIN
 
         if origin != ORIGIN:
@@ -386,6 +392,9 @@ class Portal:
             return {"resources": [r for r in result["resources"] if r["id"] == row["remote_id"]]}
         c = self.connection(body.get("connection") or q.get("connection"))
         if path == "/v1/portal/disconnect" and method == "POST":
+            from .managed import enabled
+            if enabled(self.store):
+                raise Problem('Connected through your Ubuntu account; use Pause to stop syncing', 409)
             self.store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (c["id"],))
             self.store.db.execute(
                 "UPDATE outbox SET state='draft',reason='Disconnected' WHERE connection=? AND state='queued'",
@@ -464,6 +473,8 @@ def acknowledge(store, job, result):
 
 
 def sync_connection(store, c, transport=remote, token=None):
+    from .managed import guarded_transport
+    transport, check_authorization = guarded_transport(store, c, transport)
     adapter = Portal(store)
     token = token or adapter.token(c)
     prefix = "/desktop/v1/workspaces/" + c["workspace"]
@@ -503,6 +514,7 @@ def sync_connection(store, c, transport=remote, token=None):
         except Problem as error:
             if v2 and error.status == 410:
                 with store.tx():
+                    check_authorization()
                     store.set_setting("checkpoint:" + c["id"], "")
                 raise Problem("Workspace authorization changed; refreshing its cache", 409)
             raise
@@ -527,6 +539,7 @@ def sync_connection(store, c, transport=remote, token=None):
     # Nothing is committed until every page succeeds. Missing records never delete cached content.
     remote_by_id = {r["id"]: r for r in records}
     with store.tx():
+        check_authorization()
         if v2:
             for row in store.db.execute(
                 "SELECT id,remote_id FROM items WHERE connection=? AND remote_id IS NOT NULL", (c["id"],)
@@ -688,6 +701,7 @@ def sync_connection(store, c, transport=remote, token=None):
         ]
     # File I/O has its own worker; failed transfers never prevent graph uploads.
     with store.tx():
+        check_authorization()
         queued_files = (
             {a["id"]: a for a in store.setting("attachment_queue:" + c["id"], [])}
             if v2 and checkpoint
@@ -715,6 +729,7 @@ def sync_connection(store, c, transport=remote, token=None):
                     store, c, prefix, token, transport, job, "project_status_write", payload["arguments"]
                 )
                 with store.tx():
+                    check_authorization()
                     store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
                     store.set_setting("status_catalog:" + c["id"], result["revision"])
                     remote_board = payload["arguments"].get("board_id")
@@ -737,6 +752,7 @@ def sync_connection(store, c, transport=remote, token=None):
             except Problem as e:
                 if e.status in (401, 403, 409, 400):
                     with store.tx():
+                        check_authorization()
                         store.db.execute(
                             "UPDATE outbox SET state='draft',reason='Shared status rejected; review revision or permissions' WHERE id=?",
                             (job["id"],),
@@ -768,18 +784,21 @@ def sync_connection(store, c, transport=remote, token=None):
             else:
                 if not remote_edge:
                     with store.tx():
+                        check_authorization()
                         store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
                     continue
                 args.update(id=remote_edge["id"], revision=remote_edge["revision"])
             try:
                 result = send_job(store, c, prefix, token, transport, job, operation, args)
                 with store.tx():
+                    check_authorization()
                     store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
                     store.set_setting("remote_edge:" + edge["id"], result)
                     store.set_setting("edge_local:" + c["id"] + ":" + result["id"], edge["id"])
             except Problem as e:
                 if e.status in (401, 403, 409, 400):
                     with store.tx():
+                        check_authorization()
                         store.db.execute(
                             "UPDATE outbox SET state='draft',reason='Shared relationship rejected; review permissions or revision' WHERE id=?",
                             (job["id"],),
@@ -800,6 +819,7 @@ def sync_connection(store, c, transport=remote, token=None):
                 local_data = encode_data(store, c["id"], local["data"])
             except Problem:
                 with store.tx():
+                    check_authorization()
                     store.db.execute(
                         "UPDATE outbox SET state='draft',reason='Shared edit contains a local-only reference or unavailable member' WHERE id=?",
                         (job["id"],),
@@ -818,6 +838,7 @@ def sync_connection(store, c, transport=remote, token=None):
                     {"kind": local["kind"], "data": local_data},
                 )
                 with store.tx():
+                    check_authorization()
                     duplicate = store.db.execute(
                         "SELECT id FROM items WHERE connection=? AND remote_id=? AND id!=?",
                         (c["id"], result["id"], job["item_id"]),
@@ -859,6 +880,7 @@ def sync_connection(store, c, transport=remote, token=None):
             except Problem as e:
                 if e.status in (401, 403, 400):
                     with store.tx():
+                        check_authorization()
                         store.db.execute(
                             "UPDATE outbox SET state='draft',reason='Create rejected; review shared fields or permissions' WHERE id=?",
                             (job["id"],),
@@ -869,6 +891,7 @@ def sync_connection(store, c, transport=remote, token=None):
         if shared is None:
             # Never interpret a missing snapshot item as deletion or permission to recreate.
             with store.tx():
+                check_authorization()
                 store.db.execute(
                     "UPDATE outbox SET state='draft',reason='Shared record unavailable' WHERE id=?",
                     (job["id"],),
@@ -882,6 +905,7 @@ def sync_connection(store, c, transport=remote, token=None):
                     store, c, prefix, token, transport, job, inflight["tool"], inflight["arguments"]
                 )
                 with store.tx():
+                    check_authorization()
                     acknowledge(store, job, result)
                     remote_by_id[remote_id] = result
                 continue
@@ -892,6 +916,7 @@ def sync_connection(store, c, transport=remote, token=None):
         merged = merge(base.get("data", {}) if base else {}, local_data, shared["data"])
         if merged is None:
             with store.tx():
+                check_authorization()
                 store.db.execute(
                     "INSERT INTO conflicts VALUES(?,?,?,?,?,?,0)",
                     (uid(), c["id"], job["item_id"], json.dumps(base), json.dumps(local), json.dumps(shared)),
@@ -916,11 +941,13 @@ def sync_connection(store, c, transport=remote, token=None):
             else:
                 result = shared
             with store.tx():
+                check_authorization()
                 acknowledge(store, job, result)
                 remote_by_id[remote_id] = result
         except Problem as e:
             if e.status in (401, 403):
                 with store.tx():
+                    check_authorization()
                     store.db.execute(
                         "UPDATE outbox SET state='draft',reason='Authorization removed' WHERE id=?",
                         (job["id"],),
@@ -930,6 +957,7 @@ def sync_connection(store, c, transport=remote, token=None):
             else:
                 raise
     with store.tx():
+        check_authorization()
         store.db.execute("UPDATE connections SET cursor=? WHERE id=?", (now(), c["id"]))
 
 
