@@ -1,0 +1,559 @@
+"""SQLite graph storage, revisions, tombstones, transactional replay and outbox."""
+
+import hashlib
+import json
+import os
+import sqlite3
+import threading
+import uuid
+from datetime import datetime, timezone
+from contextlib import contextmanager
+
+KINDS = {"task", "board", "deliverable", "note", "resource", "comment"}
+DEFAULT = dict(
+    title="",
+    body="",
+    state="todo",
+    status_id=None,
+    visibility="private",
+    priority="normal",
+    acceptance="",
+    assignee=None,
+    reviewer=None,
+    starts_on=None,
+    due_on=None,
+    parent_id=None,
+    board_id=None,
+    resource_id=None,
+    archived=False,
+    deleted=False,
+    color="yellow",
+    resource=None,
+    checklist=[],
+    details={},
+)
+
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+def uid():
+    return str(uuid.uuid4())
+
+
+class Problem(Exception):
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+class Store:
+    def __init__(self, paths):
+        self.paths = paths
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(paths.data / "projects.sqlite", check_same_thread=False)
+        self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA journal_mode=WAL")
+        self.db.execute("PRAGMA foreign_keys=ON")
+        self.db.execute("PRAGMA busy_timeout=5000")
+        try:
+            self.migrate()
+        except BaseException:
+            self.db.close()
+            raise
+        os.chmod(paths.data / "projects.sqlite", 0o600)
+
+    def migrate(self):
+        version = self.db.execute("PRAGMA user_version").fetchone()[0]
+        if version > 1:
+            raise Problem("Database is newer than this application; refusing downgrade", 409)
+        if version == 0:
+            self.db.executescript("""BEGIN IMMEDIATE;
+                CREATE TABLE items(id TEXT PRIMARY KEY, kind TEXT NOT NULL, revision INTEGER NOT NULL, data TEXT NOT NULL, author_id TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, connection TEXT, remote_id TEXT);
+                CREATE TABLE edges(id TEXT PRIMARY KEY, source_id TEXT REFERENCES items(id), target_id TEXT REFERENCES items(id), kind TEXT, revision INTEGER, deleted INTEGER DEFAULT 0);
+                CREATE TABLE statuses(id TEXT PRIMARY KEY, revision INTEGER, data TEXT);
+                CREATE TABLE events(sequence INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT, operation TEXT, created_at TEXT, data TEXT);
+                CREATE TABLE replay(key TEXT PRIMARY KEY, digest TEXT, response TEXT);
+                CREATE TABLE grants(id TEXT PRIMARY KEY, name TEXT, digest TEXT UNIQUE, scopes TEXT, resource_id TEXT, revoked_at TEXT);
+                CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE attachments(id TEXT PRIMARY KEY, item_id TEXT REFERENCES items(id), name TEXT, size INTEGER, sha256 TEXT);
+                CREATE TABLE connections(id TEXT PRIMARY KEY, origin TEXT, account TEXT, workspace TEXT, state TEXT, cursor TEXT, capabilities TEXT);
+                CREATE TABLE outbox(id TEXT PRIMARY KEY, connection TEXT, item_id TEXT, base TEXT, payload TEXT, state TEXT DEFAULT 'queued', reason TEXT DEFAULT '');
+                CREATE TABLE conflicts(id TEXT PRIMARY KEY, connection TEXT, item_id TEXT, base TEXT, local TEXT, remote TEXT, resolved INTEGER DEFAULT 0);
+                CREATE TABLE monitors(resource_id TEXT PRIMARY KEY REFERENCES items(id), config TEXT, health TEXT DEFAULT 'unknown', candidate TEXT, streak INTEGER DEFAULT 0, last_at TEXT, next_at REAL DEFAULT 0, detail TEXT);
+                CREATE TABLE incidents(id TEXT PRIMARY KEY, resource_id TEXT, health TEXT, created_at TEXT, detail TEXT);
+                CREATE TABLE forwarding(id TEXT PRIMARY KEY, destination TEXT, resource_id TEXT, credential TEXT, enabled INTEGER DEFAULT 1);
+                CREATE TABLE forward_queue(id TEXT, target TEXT, data TEXT, bytes INTEGER, attempts INTEGER DEFAULT 0, next_at REAL DEFAULT 0, PRIMARY KEY(id,target));
+                CREATE TABLE aliases(resource_id TEXT PRIMARY KEY, alias TEXT UNIQUE, host TEXT, username TEXT, port INTEGER, identity_file TEXT, agent INTEGER);
+                """)
+            try:
+                for state, name, color in [
+                    ("todo", "To do", "#777777"),
+                    ("doing", "In progress", "#7357db"),
+                    ("waiting", "Waiting", "#bd8200"),
+                    ("review", "In review", "#2479b7"),
+                    ("done", "Done", "#24865d"),
+                ]:
+                    self.status_save(
+                        {
+                            "data": dict(
+                                name=name,
+                                color=color,
+                                category=state,
+                                legacy_state=state,
+                                position=len(self.statuses()),
+                                is_default=state == "todo",
+                                retired=False,
+                                replacement_id=None,
+                                board_id=None,
+                            )
+                        }
+                    )
+                self.db.execute("PRAGMA user_version=1")
+                self.db.commit()
+            except BaseException:
+                self.db.rollback()
+                raise
+
+    @contextmanager
+    def tx(self):
+        with self.lock:
+            self.db.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+                self.db.commit()
+            except BaseException:
+                self.db.rollback()
+                raise
+
+    def setting(self, key, default=None):
+        row = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return json.loads(row[0]) if row else default
+
+    def set_setting(self, key, value):
+        self.db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, json.dumps(value)))
+
+    def row(self, row):
+        if row is None:
+            raise Problem("Record not found", 404)
+        return {
+            k: (json.loads(row[k]) if k == "data" else row[k])
+            for k in ("id", "kind", "revision", "data", "author_id", "created_at", "updated_at")
+        }
+
+    def item(self, item_id):
+        return self.row(self.db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone())
+
+    def list(self, after="", kind=None, limit=100, board=None):
+        if not isinstance(limit, int) or not 1 <= limit <= 100:
+            raise Problem("limit must be 1..100")
+        rows = self.db.execute(
+            "SELECT * FROM items WHERE id>? AND (? IS NULL OR kind=?) ORDER BY id LIMIT ?",
+            (after, kind, kind, limit + 1),
+        ).fetchall()
+        items = [self.row(r) for r in rows[:limit]]
+        if board is not None:
+            items = [r for r in items if r["data"].get("board_id") == board]
+        return dict(items=items, next=rows[limit - 1]["id"] if len(rows) > limit else None)
+
+    def validate(self, kind, data, item_id=None):
+        if kind not in KINDS or not isinstance(data, dict) or set(data) - set(DEFAULT):
+            raise Problem("Invalid record kind or fields")
+        for name in ("title", "body", "state", "visibility", "priority", "acceptance", "color"):
+            if name in data and (
+                not isinstance(data[name], str)
+                or len(data[name]) > (100000 if name in ("body", "acceptance") else 500)
+            ):
+                raise Problem(f"Invalid {name}")
+        for name in ("deleted", "archived"):
+            if name in data and not isinstance(data[name], bool):
+                raise Problem(f"Invalid {name}")
+        if "checklist" in data:
+            if (
+                not isinstance(data["checklist"], list)
+                or len(data["checklist"]) > 200
+                or any(
+                    not isinstance(x, dict)
+                    or not isinstance(x.get("id"), str)
+                    or not isinstance(x.get("text"), str)
+                    or not isinstance(x.get("done"), bool)
+                    for x in data["checklist"]
+                )
+            ):
+                raise Problem("Invalid checklist")
+        if "details" in data and (
+            not isinstance(data["details"], dict)
+            or any(not isinstance(k, str) or not isinstance(v, str) for k, v in data["details"].items())
+        ):
+            raise Problem("Invalid details")
+        if data.get("board_id"):
+            b = self.item(data["board_id"])
+            if b["kind"] != "board" or b["data"]["deleted"]:
+                raise Problem("Board unavailable")
+        if data.get("parent_id"):
+            p = self.item(data["parent_id"])
+            if p["id"] == item_id or p["data"]["deleted"]:
+                raise Problem("Invalid parent")
+            if kind == "comment":
+                data["board_id"] = p["data"].get("board_id")
+        if data.get("status_id"):
+            status = next((s for s in self.statuses() if s["id"] == data["status_id"]), None)
+            if not status or status["retired"] or status.get("board_id") != data.get("board_id"):
+                raise Problem("Status unavailable for this board")
+            data["state"] = status["legacy_state"]
+        for f in ("starts_on", "due_on"):
+            if data.get(f):
+                try:
+                    datetime.strptime(data[f], "%Y-%m-%d")
+                except (TypeError, ValueError):
+                    raise Problem("Invalid date")
+        if data.get("starts_on") and data.get("due_on") and data["starts_on"] > data["due_on"]:
+            raise Problem("Due date precedes start date")
+        if data.get("resource") is not None and not isinstance(data["resource"], dict):
+            raise Problem("Invalid resource metadata")
+
+    def replay(self, key, payload, operation):
+        if not isinstance(key, str) or not 1 <= len(key) <= 128:
+            raise Problem("idempotency_key required")
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        row = self.db.execute("SELECT * FROM replay WHERE key=?", (key,)).fetchone()
+        if row:
+            if row["digest"] != digest:
+                raise Problem("Idempotency key reused for a different request", 409)
+            return json.loads(row["response"])
+        value = operation()
+        self.db.execute("INSERT INTO replay VALUES(?,?,?)", (key, digest, json.dumps(value)))
+        return value
+
+    def retain_disconnected_drafts(self, connection):
+        if connection:
+            row = self.db.execute("SELECT state FROM connections WHERE id=?", (connection,)).fetchone()
+            if not row or row["state"] not in ("connected", "syncing"):
+                self.db.execute(
+                    "UPDATE outbox SET state='draft',reason='Connection is disconnected; retained locally' WHERE connection=? AND state='queued'",
+                    (connection,),
+                )
+
+    def event(self, item_id, operation, data):
+        row = self.db.execute("SELECT connection FROM items WHERE id=?", (item_id,)).fetchone()
+        self.retain_disconnected_drafts(row["connection"] if row else None)
+        self.db.execute(
+            "INSERT INTO events(item_id,operation,created_at,data) VALUES(?,?,?,?)",
+            (item_id, operation, now(), json.dumps(data)),
+        )
+
+    def create(self, body):
+        def apply():
+            item_id = body.get("id") or uid()
+            try:
+                uuid.UUID(item_id)
+            except (ValueError, TypeError):
+                raise Problem("Invalid record identity")
+            data = dict(DEFAULT, **body.get("data", {}))
+            kind = body.get("kind")
+            self.validate(kind, data, item_id)
+            stamp = now()
+            try:
+                self.db.execute(
+                    "INSERT INTO items VALUES(?,?,?,?,?,?,?,?,?)",
+                    (item_id, kind, 1, json.dumps(data), "local", stamp, stamp, None, None),
+                )
+            except sqlite3.IntegrityError:
+                raise Problem("Identity already exists", 409)
+            if kind == "board":
+                for s in [x for x in self.statuses() if x.get("board_id") is None]:
+                    self.status_save(
+                        {
+                            "data": {k: v for k, v in s.items() if k not in ("id", "revision")}
+                            | {"board_id": item_id}
+                        }
+                    )
+            parent = data.get("board_id") or data.get("parent_id")
+            connection = (
+                self.db.execute("SELECT connection FROM items WHERE id=?", (parent,)).fetchone()
+                if parent
+                else None
+            )
+            if connection and connection["connection"]:
+                self.db.execute(
+                    "UPDATE items SET connection=? WHERE id=?", (connection["connection"], item_id)
+                )
+                self.db.execute(
+                    "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
+                    (
+                        body["idempotency_key"],
+                        connection["connection"],
+                        item_id,
+                        json.dumps(None),
+                        json.dumps(self.item(item_id)),
+                    ),
+                )
+            self.event(item_id, "create", data)
+            return self.item(item_id)
+
+        return self.replay(body.get("idempotency_key"), body, apply)
+
+    def update(self, item_id, body):
+        def apply():
+            old = self.item(item_id)
+            if body.get("revision") != old["revision"]:
+                raise Problem("Record changed; reload or resolve the conflict", 409)
+            patch = body.get("data", {})
+            data = dict(old["data"], **patch)
+            if patch.get("state") and "status_id" not in patch and patch["state"] != old["data"].get("state"):
+                status = next(
+                    (
+                        x
+                        for x in self.statuses()
+                        if x.get("board_id") == data.get("board_id")
+                        and not x["retired"]
+                        and x["legacy_state"] == patch["state"]
+                    ),
+                    None,
+                )
+                data["status_id"] = status["id"] if status else None
+            self.validate(old["kind"], data, item_id)
+            if old["data"].get("deleted") and not (body.get("restoring") or patch == {"deleted": False}):
+                raise Problem("Restore the record before editing", 409)
+            self.db.execute(
+                "UPDATE items SET data=?,revision=revision+1,updated_at=? WHERE id=?",
+                (json.dumps(data), now(), item_id),
+            )
+            row = self.db.execute("SELECT connection FROM items WHERE id=?", (item_id,)).fetchone()
+            if row["connection"]:
+                self.db.execute(
+                    "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
+                    (
+                        body["idempotency_key"],
+                        row["connection"],
+                        item_id,
+                        json.dumps(old),
+                        json.dumps(self.item(item_id)),
+                    ),
+                )
+            self.event(item_id, "update", data)
+            return self.item(item_id)
+
+        return self.replay(body.get("idempotency_key"), dict(body, item_id=item_id), apply)
+
+    def action(self, item_id, body):
+        action = body.get("action")
+        flags = {
+            "trash": dict(deleted=True),
+            "restore": dict(deleted=False),
+            "archive": dict(archived=True),
+            "unarchive": dict(archived=False),
+            "delete": dict(deleted=True),
+            "approve": dict(state="done"),
+            "changes": dict(state="doing"),
+            "reopen": dict(state="todo"),
+        }
+        if action not in flags:
+            raise Problem("Unknown action")
+        return self.update(item_id, dict(body, data=flags[action], restoring=action == "restore"))
+
+    def edges(self):
+        return [
+            dict(x)
+            for x in self.db.execute("SELECT id,source_id,target_id,kind,revision FROM edges WHERE deleted=0")
+        ]
+
+    def edge_create(self, body):
+        def apply():
+            source = self.item(body.get("source_id"))
+            target = self.item(body.get("target_id"))
+            kind = body.get("kind")
+            if kind not in ("related", "depends_on") or source["id"] == target["id"]:
+                raise Problem("Invalid relationship")
+            if source["data"].get("board_id") != target["data"].get("board_id"):
+                raise Problem("Relationships must stay in one board")
+            if source["data"]["deleted"] or target["data"]["deleted"]:
+                raise Problem("Deleted record")
+            if kind == "depends_on":
+                adjacency = {}
+                for e in self.edges():
+                    if e["kind"] == "depends_on":
+                        adjacency.setdefault(e["source_id"], []).append(e["target_id"])
+                todo = [target["id"]]
+                seen = set()
+                while todo:
+                    x = todo.pop()
+                    if x == source["id"]:
+                        raise Problem("Dependencies cannot form a cycle", 409)
+                    if x not in seen:
+                        seen.add(x)
+                        todo.extend(adjacency.get(x, []))
+            existing = self.db.execute(
+                "SELECT * FROM edges WHERE source_id=? AND target_id=? AND kind=? AND deleted=0",
+                (source["id"], target["id"], kind),
+            ).fetchone()
+            if "expected_revision" in body and body["expected_revision"] != (
+                existing["revision"] if existing else 0
+            ):
+                raise Problem("Graph changed", 409)
+            if existing:
+                return dict(existing)
+            edge = dict(id=uid(), source_id=source["id"], target_id=target["id"], kind=kind, revision=1)
+            self.db.execute(
+                "INSERT INTO edges(id,source_id,target_id,kind,revision) VALUES(:id,:source_id,:target_id,:kind,:revision)",
+                edge,
+            )
+            connection = self.db.execute(
+                "SELECT connection FROM items WHERE id=?", (source["id"],)
+            ).fetchone()[0]
+            if connection:
+                self.db.execute(
+                    "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
+                    (
+                        body["idempotency_key"],
+                        connection,
+                        source["id"],
+                        "null",
+                        json.dumps({"operation": "project_link", "edge": edge}),
+                    ),
+                )
+            self.event(source["id"], "link", edge)
+            return edge
+
+        return self.replay(body.get("idempotency_key"), body, apply)
+
+    def edge_delete(self, edge_id, revision):
+        row = self.db.execute("SELECT * FROM edges WHERE id=? AND deleted=0", (edge_id,)).fetchone()
+        if not row:
+            raise Problem("Relationship unavailable", 404)
+        if row["revision"] != revision:
+            raise Problem("Relationship changed", 409)
+        self.db.execute("UPDATE edges SET deleted=1,revision=revision+1 WHERE id=?", (edge_id,))
+        connection = self.db.execute(
+            "SELECT connection FROM items WHERE id=?", (row["source_id"],)
+        ).fetchone()[0]
+        if connection:
+            self.db.execute(
+                "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
+                (
+                    uid(),
+                    connection,
+                    row["source_id"],
+                    "null",
+                    json.dumps({"operation": "project_unlink", "edge": dict(row)}),
+                ),
+            )
+        self.event(row["source_id"], "unlink", dict(row))
+        return None
+
+    def statuses(self):
+        return [
+            dict(json.loads(r["data"]), id=r["id"], revision=r["revision"])
+            for r in self.db.execute("SELECT * FROM statuses")
+        ]
+
+    def status_save(self, body):
+        data = body.get("data", {})
+        ident = body.get("id") or uid()
+        if not isinstance(data, dict) or not data.get("name") or len(data["name"]) > 120:
+            raise Problem("Status name required")
+        old = self.db.execute("SELECT * FROM statuses WHERE id=?", (ident,)).fetchone()
+        if old and old["revision"] != body.get("revision"):
+            raise Problem("Status changed", 409)
+        data = dict(
+            dict(
+                name="",
+                color="#777777",
+                category="todo",
+                legacy_state="todo",
+                position=0,
+                is_default=False,
+                retired=False,
+                replacement_id=None,
+                board_id=None,
+            ),
+            **data,
+        )
+        data["legacy_state"] = data["legacy_state"] or data["category"]
+        if data["category"] in ("waiting", "review"):
+            data["category"] = "doing"
+        if data["category"] not in ("todo", "doing", "done"):
+            raise Problem("Invalid status reporting category")
+        if data.get("board_id") and self.item(data["board_id"])["kind"] != "board":
+            raise Problem("Invalid status board")
+        if data["retired"]:
+            replacement = next(
+                (
+                    s
+                    for s in self.statuses()
+                    if s["id"] == data["replacement_id"]
+                    and not s["retired"]
+                    and s.get("board_id") == data.get("board_id")
+                ),
+                None,
+            )
+            if not replacement:
+                raise Problem("Choose a replacement status before retiring")
+            for row in self.db.execute("SELECT * FROM items").fetchall():
+                item = self.row(row)
+                if item["data"].get("status_id") == ident:
+                    item["data"].update(status_id=replacement["id"], state=replacement["legacy_state"])
+                    self.db.execute(
+                        "UPDATE items SET data=?,revision=revision+1 WHERE id=?",
+                        (json.dumps(item["data"]), item["id"]),
+                    )
+        rev = old["revision"] + 1 if old else 1
+        self.db.execute("INSERT OR REPLACE INTO statuses VALUES(?,?,?)", (ident, rev, json.dumps(data)))
+        board = data.get("board_id")
+        connection = (
+            self.db.execute("SELECT connection FROM items WHERE id=?", (board,)).fetchone() if board else None
+        )
+        if connection and connection["connection"]:
+            connection = connection["connection"]
+            remote_id = self.setting("status_remote:" + ident)
+            previous = json.loads(old["data"]) if old else {}
+            operation = (
+                "retire"
+                if data["retired"]
+                else "create"
+                if not remote_id
+                else "default"
+                if data["is_default"] and not previous.get("is_default")
+                else "reorder"
+                if data["position"] != previous.get("position")
+                else "update"
+            )
+            args = {
+                "operation": operation,
+                "revision": self.setting("status_catalog:" + connection, "unknown"),
+                "name": data["name"],
+                "color": data["color"],
+                "category": data["category"],
+            }
+            board_remote = self.db.execute("SELECT remote_id FROM items WHERE id=?", (board,)).fetchone()[0]
+            if board_remote:
+                args["board_id"] = board_remote
+            if operation == "reorder":
+                args["order"] = [
+                    self.setting("status_remote:" + status["id"])
+                    for status in sorted(
+                        (x for x in self.statuses() if x.get("board_id") == board and not x["retired"]),
+                        key=lambda x: x["position"],
+                    )
+                ]
+            elif remote_id:
+                args["id"] = remote_id
+            if data.get("replacement_id"):
+                args["replacement_id"] = self.setting("status_remote:" + data["replacement_id"])
+            request_id = uid()
+            args["idempotency_key"] = request_id
+            self.db.execute(
+                "INSERT INTO outbox(id,connection,item_id,base,payload) VALUES(?,?,?,?,?)",
+                (
+                    request_id,
+                    connection,
+                    board,
+                    "null",
+                    json.dumps({"operation": "project_status_write", "status": ident, "arguments": args}),
+                ),
+            )
+
+            self.retain_disconnected_drafts(connection)
+
+        return dict(data, id=ident, revision=rev)

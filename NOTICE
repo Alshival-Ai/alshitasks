@@ -1,0 +1,7 @@
+Alshival.Ai
+Copyright 2026 Alshival.Ai
+
+Includes Alshival-authored Neural Labs Projects components and project-tool contract.
+Extraction source revisions and hashes: docs/provenance.json.
+Public Sans font: SIL Open Font License 1.1, retained alongside the font.
+Dependency license notices are included in packaged Electron/dependency distributions.

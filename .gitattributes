@@ -1,0 +1,3 @@
+# Preserve upstream license text formatting verbatim.
+docs/DEPENDENCY_NOTICES.md whitespace=-trailing-space
+desktop/renderer/project-board/portal/public-sans-OFL.txt whitespace=-trailing-space
