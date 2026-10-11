@@ -55,5 +55,14 @@
       "source": "Alshival.ai website: customer_hub/static/customer_hub/stickers/api.svg",
       "sha256": "e6f9690714555ca28a3755ce218051e7cef2aa4d48551c34b7d0b13cb91a1a07"
     }
+  },
+  "sticky_note_adaptation": {
+    "revision": "b3c1e8004e00bfaf2e6dfd5dbd1bb4d2709a43b7",
+    "target": "desktop/renderer/project-board/connected-cards.css",
+    "sources": {
+      "scrapbook.css": "f8e0607731456223300e7fb1dc8c5f40f7ad4852f7f922cb0c45ca511aa875b4",
+      "board-cards.css": "7bcf8e734663631d6ad0de8a746cb5d425adb5108ad28f5e7ec639d757aa529c"
+    },
+    "notes": "React note editor uses portal paper colors, transparent inputs, palette controls and expanded typography; bundled locally."
   }
 }

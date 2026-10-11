@@ -31,9 +31,18 @@ try {
   );
   await page.getByRole("radio", { name: "Dark", exact: true }).click();
   const secondary = spawnSync(
-    '/usr/lib/alshitasks/electron/electron',
-    ['--ozone-platform=' + (process.env.ALSHITASKS_TEST_DISPLAY || 'x11'), process.env.ALSHITASKS_TEST_APP || path.resolve('.')],
-    { env: { ...process.env, ALSHITASKS_TEST_ROOT: root }, timeout: 10000, killSignal: 'SIGKILL', encoding: 'utf8', stdio: 'pipe' },
+    "/usr/lib/alshitasks/electron/electron",
+    [
+      "--ozone-platform=" + (process.env.ALSHITASKS_TEST_DISPLAY || "x11"),
+      process.env.ALSHITASKS_TEST_APP || path.resolve("."),
+    ],
+    {
+      env: { ...process.env, ALSHITASKS_TEST_ROOT: root },
+      timeout: 10000,
+      killSignal: "SIGKILL",
+      encoding: "utf8",
+      stdio: "pipe",
+    },
   );
   assert.equal(secondary.status, 0, secondary.stderr);
   assert.doesNotMatch(secondary.stderr, /ERR_FAILED|Desktop startup failed/);
@@ -141,6 +150,142 @@ try {
         i.data.body === "Persisted note content",
     );
   });
+  // Portal sticky-note parity, including compact color selection and paper inputs.
+  if (
+    await page
+      .getByRole("button", { name: "Collapse note", exact: true })
+      .count()
+  )
+    await page
+      .getByRole("button", { name: "Collapse note", exact: true })
+      .click();
+  const sticky = page.locator(".sp-sticky").filter({
+    has: page.getByRole("textbox", {
+      name: "Note title: Offline note",
+      exact: true,
+    }),
+  });
+  for (const theme of ["Light", "Dark"]) {
+    await page.getByRole("radio", { name: theme, exact: true }).click();
+    for (const color of [
+      "Yellow",
+      "Blue",
+      "Pink",
+      "Green",
+      "Orange",
+      "Purple",
+      "Teal",
+      "Gray",
+    ]) {
+      await sticky
+        .getByRole("button", { name: "Note color", exact: true })
+        .click();
+      await sticky.getByRole("button", { name: color, exact: true }).click();
+      assert.equal(
+        await sticky
+          .locator('input[aria-label^="Note title:"]')
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+        "rgba(0, 0, 0, 0)",
+      );
+      await page.waitForFunction(
+        async (color) =>
+          (await window.tasks.request("/v1/projects/items")).items.some(
+            (i) =>
+              i.kind === "note" &&
+              i.data.color === color &&
+              i.data.body === "Persisted note content",
+          ),
+        color.toLowerCase(),
+      );
+      await sticky.getByRole("status").waitFor({ state: "detached" });
+      assert.equal(
+        await sticky
+          .locator('input[aria-label^="Note title:"]')
+          .evaluate((el) => getComputedStyle(el).fontSize),
+        "18px",
+      );
+      const paper = await sticky.evaluate(
+        (el) => getComputedStyle(el).backgroundColor,
+      );
+      await sticky
+        .getByRole("button", { name: "Expand note", exact: true })
+        .click();
+      const expanded = page.locator('.connected-paper[data-kind="note"]');
+      assert.ok(
+        await expanded.evaluate(
+          (el) =>
+            el.getBoundingClientRect().left >=
+            document.querySelector(".app-sidebar").getBoundingClientRect()
+              .right,
+        ),
+      );
+      assert.equal(
+        await expanded
+          .locator('input[aria-label^="Note title:"]')
+          .evaluate((el) => getComputedStyle(el).fontSize),
+        "26px",
+      );
+      assert.equal(
+        await expanded.evaluate((el) => getComputedStyle(el).backgroundColor),
+        paper,
+      );
+      assert.equal(
+        await expanded
+          .locator('input[aria-label^="Note title:"]')
+          .evaluate((el) => getComputedStyle(el).backgroundColor),
+        "rgba(0, 0, 0, 0)",
+      );
+      await expanded
+        .getByRole("button", { name: "Note color", exact: true })
+        .click();
+      assert.equal(
+        await expanded
+          .getByRole("button", { name: color, exact: true })
+          .getAttribute("aria-pressed"),
+        "true",
+      );
+      await page.keyboard.press("Escape");
+      assert.equal(
+        await expanded
+          .getByRole("dialog", { name: "Note color", exact: true })
+          .count(),
+        0,
+      );
+      await page.screenshot({
+        path: `/tmp/alshitasks-note-${theme.toLowerCase()}.png`,
+      });
+      await expanded
+        .getByRole("button", { name: "Collapse note", exact: true })
+        .click();
+    }
+  }
+  await page.setViewportSize({ width: 600, height: 800 });
+  await sticky
+    .getByRole("button", { name: "Expand note", exact: true })
+    .click();
+  const narrowNote = page.locator('.connected-paper[data-kind="note"]');
+  await narrowNote
+    .getByRole("button", { name: "Note color", exact: true })
+    .click();
+  assert.ok(
+    await narrowNote
+      .getByRole("dialog", { name: "Note color", exact: true })
+      .evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return r.left >= 0 && r.right <= innerWidth;
+      }),
+  );
+  await page.keyboard.press("Escape");
+  await narrowNote
+    .getByRole("button", { name: "Collapse note", exact: true })
+    .click();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.reload();
+  await page
+    .getByRole("textbox", { name: "Note title: Offline note", exact: true })
+    .waitFor();
+  assert.equal(await sticky.getAttribute("data-color"), "gray");
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
   await page.getByRole("button", { name: "New Resource", exact: true }).click();
   await page.getByLabel("Title", { exact: true }).fill("Offline resource");
   await page

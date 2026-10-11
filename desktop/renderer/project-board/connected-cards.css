@@ -397,3 +397,310 @@
   width: 100%;
   box-sizing: border-box;
 }
+
+/* Sticky-note parity: portal scrapbook.css and board-cards.css. */
+.projects-app .connected-note-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: auto;
+  min-height: 0;
+  position: relative;
+  margin-top: 24px;
+  padding-top: 38px;
+}
+.projects-app .connected-note-editor.is-compact {
+  position: static;
+  margin-top: 12px;
+  padding-top: 0;
+  gap: 8px;
+}
+.projects-app .connected-note-editor.sp-note-editor > input,
+.projects-app .connected-note-editor.sp-note-editor textarea {
+  background: transparent !important;
+  color: #332d25 !important;
+  box-shadow: none !important;
+  min-width: 0;
+}
+.projects-app .connected-note-editor > input {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+.projects-app .connected-note-editor.is-compact > input {
+  font-size: 18px;
+  letter-spacing: normal;
+}
+.projects-app
+  .connected-paper[data-kind="note"]
+  .connected-note-editor
+  :is(input, textarea) {
+  border: 0 !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+}
+.projects-app .connected-note-editor :is(input, textarea):focus-visible {
+  outline: 1px dashed #66512b55 !important;
+  outline-offset: 4px;
+}
+.projects-app
+  .connected-paper[data-kind="note"]
+  .connected-note-editor
+  :is(textarea, .project-note-markdown) {
+  font-size: 17px;
+  line-height: 1.7;
+  min-height: 210px;
+}
+.projects-app .connected-paper[data-kind="note"] {
+  border-radius: 3px 3px 24px 3px;
+  box-shadow:
+    3px 14px 24px #24201c22,
+    0 32px 80px #24201c20;
+}
+.projects-app .connected-paper[data-kind="note"] > header {
+  padding: 6px 12px;
+  min-height: 38px;
+  background: #ffffff18;
+}
+.projects-app .connected-paper[data-kind="note"] .connected-paper-content {
+  padding: 0 28px 24px;
+}
+.projects-app .connected-note-editor .sp-note-controls {
+  top: 2px;
+  right: 6px;
+}
+.projects-app .connected-note-editor .sp-note-tool {
+  width: 32px;
+  height: 32px;
+  padding: 5px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff5;
+  color: #332d25;
+}
+.projects-app .connected-note-editor .sp-note-swatch {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #332d2540;
+  border-radius: 50%;
+  background: var(--swatch);
+}
+.projects-app .connected-note-editor .sp-note-swatch[aria-pressed="true"] {
+  box-shadow:
+    0 0 0 2px #fff9ed,
+    0 0 0 4px #534566;
+}
+.projects-app .connected-note-editor .sp-note-options {
+  z-index: 5;
+}
+.projects-app .sp-sticky:has(.connected-note-editor) {
+  min-height: 355px;
+}
+.projects-app .sp-sticky .desktop-note-expand {
+  position: absolute;
+  top: 3px;
+  right: 44px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff38;
+  color: #665c49;
+}
+.projects-app .connected-paper[data-kind="note"][data-color="yellow"],
+.projects-app .connected-home-note[data-color="yellow"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="yellow"]
+  ) {
+  --note-paper: #f5e8af;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="blue"],
+.projects-app .connected-home-note[data-color="blue"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="blue"]
+  ) {
+  --note-paper: #cfe5ef;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="pink"],
+.projects-app .connected-home-note[data-color="pink"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="pink"]
+  ) {
+  --note-paper: #efd2d6;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="green"],
+.projects-app .connected-home-note[data-color="green"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="green"]
+  ) {
+  --note-paper: #d7e6c9;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="orange"],
+.projects-app .connected-home-note[data-color="orange"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="orange"]
+  ) {
+  --note-paper: #f4d3b2;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="purple"],
+.projects-app .connected-home-note[data-color="purple"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="purple"]
+  ) {
+  --note-paper: #ded3ef;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="teal"],
+.projects-app .connected-home-note[data-color="teal"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="teal"]
+  ) {
+  --note-paper: #c7e6df;
+  background: var(--note-paper);
+}
+.projects-app .connected-paper[data-kind="note"][data-color="gray"],
+.projects-app .connected-home-note[data-color="gray"],
+.projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="gray"]
+  ) {
+  --note-paper: #e2dfd8;
+  background: var(--note-paper);
+}
+.dark-style
+  .projects-app
+  .connected-paper[data-kind="note"][data-color="yellow"],
+.dark-style .projects-app .connected-home-note[data-color="yellow"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="yellow"]
+  ) {
+  --note-paper: #e4d396;
+  background: var(--note-paper);
+}
+.dark-style .projects-app .connected-paper[data-kind="note"][data-color="blue"],
+.dark-style .projects-app .connected-home-note[data-color="blue"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="blue"]
+  ) {
+  --note-paper: #b7d3de;
+  background: var(--note-paper);
+}
+.dark-style .projects-app .connected-paper[data-kind="note"][data-color="pink"],
+.dark-style .projects-app .connected-home-note[data-color="pink"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="pink"]
+  ) {
+  --note-paper: #deb8bf;
+  background: var(--note-paper);
+}
+.dark-style
+  .projects-app
+  .connected-paper[data-kind="note"][data-color="green"],
+.dark-style .projects-app .connected-home-note[data-color="green"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="green"]
+  ) {
+  --note-paper: #bdd0ab;
+  background: var(--note-paper);
+}
+.dark-style
+  .projects-app
+  .connected-paper[data-kind="note"][data-color="orange"],
+.dark-style .projects-app .connected-home-note[data-color="orange"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="orange"]
+  ) {
+  --note-paper: #e4bb93;
+  background: var(--note-paper);
+}
+.dark-style
+  .projects-app
+  .connected-paper[data-kind="note"][data-color="purple"],
+.dark-style .projects-app .connected-home-note[data-color="purple"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="purple"]
+  ) {
+  --note-paper: #cabcdf;
+  background: var(--note-paper);
+}
+.dark-style .projects-app .connected-paper[data-kind="note"][data-color="teal"],
+.dark-style .projects-app .connected-home-note[data-color="teal"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="teal"]
+  ) {
+  --note-paper: #accec5;
+  background: var(--note-paper);
+}
+.dark-style .projects-app .connected-paper[data-kind="note"][data-color="gray"],
+.dark-style .projects-app .connected-home-note[data-color="gray"],
+.dark-style
+  .projects-app
+  :is(.sp-sticky, .connected-paper[data-kind="note"]):has(
+    .connected-note-editor[data-color="gray"]
+  ) {
+  --note-paper: #cbc7be;
+  background: var(--note-paper);
+}
+
+.projects-app
+  .connected-paper[data-kind="note"]
+  .connected-note-editor
+  > input {
+  font-size: 26px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.025em;
+}
+.projects-app .sp-sticky .connected-note-editor > input {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+}
+.projects-app .connected-note-editor > .sp-note-heading {
+  position: absolute;
+  top: 8px;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  max-width: calc(100% - 45px);
+}
+.projects-app .connected-note-editor .sp-pill {
+  background: #fff6;
+  color: #3f3831;
+  border-color: #332d2520;
+  font-size: 10px;
+}
+
+.projects-app .connected-paper[data-kind="note"] {
+  max-width: calc(100vw - var(--app-space, 0px) - 16px);
+}
+.projects-app .connected-paper[data-kind="note"] .connected-note-editor > h3 {
+  font-size: 26px;
+  line-height: 1.3;
+}

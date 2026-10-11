@@ -213,7 +213,8 @@ export function Canvas({
       >
         {visible.map((item) => {
           const resource = item.kind === "resource",
-            canEdit = manager || actor === item.author_id;
+            canEdit =
+              !item.data.archived && (manager || actor === item.author_id);
           const point = moving?.id === item.id ? moving.at : positions[item.id];
           return (
             <div className="sp-note-slot" key={item.id}>
@@ -226,8 +227,10 @@ export function Canvas({
                     item.id,
                   );
                 }}
-                data-sticker={resource ? stickerFor(item.data.resource) : undefined}
-                data-color={resource ? "blue" : item.data.color ?? "yellow"}
+                data-sticker={
+                  resource ? stickerFor(item.data.resource) : undefined
+                }
+                data-color={resource ? "blue" : (item.data.color ?? "yellow")}
                 data-note-editable={!resource && canEdit ? "" : undefined}
                 style={
                   point
@@ -322,16 +325,29 @@ export function Canvas({
                       </button>
                     </h3>
                     <ResourceTags tags={item.data.resource?.tags} compact />
-                    <p className="resource-sticker-status" data-status={item.data.resource?.status ?? "planned"}>
-                      {(item.data.resource?.status ?? "planned").replace(/^./, c => c.toUpperCase())}
+                    <p
+                      className="resource-sticker-status"
+                      data-status={item.data.resource?.status ?? "planned"}
+                    >
+                      {(item.data.resource?.status ?? "planned").replace(
+                        /^./,
+                        (c) => c.toUpperCase(),
+                      )}
                     </p>
                   </>
                 ) : (
                   <>
                     <div className="sp-note-heading">
                       <span className="sp-pill">Shared</span>
+                      <span className="sp-note-author">
+                        {
+                          members.find((m) => m.id === item.author_id)
+                            ?.display_name
+                        }
+                      </span>
                       <button
                         type="button"
+                        className="desktop-note-expand"
                         aria-label="Expand note"
                         onClick={() => open(item)}
                       >

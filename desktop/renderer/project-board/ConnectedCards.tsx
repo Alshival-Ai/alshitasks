@@ -64,6 +64,7 @@ export function NoteEditor({
   onDirty,
   editable,
   compact = false,
+  authorName,
 }: {
   item: Item;
   items: Item[];
@@ -72,12 +73,26 @@ export function NoteEditor({
   onDirty: (id: string, value: boolean) => void;
   editable: boolean;
   compact?: boolean;
+  authorName?: string;
 }) {
   const [draft, setDraft] = useState({
     title: item.data.title,
     body: item.data.body,
     color: item.data.color,
   });
+  editable = editable && !item.data.archived;
+  const [palette, setPalette] = useState(false);
+  const paletteRoot = useRef<HTMLDivElement>(null);
+  const paletteButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!palette) return;
+    const outside = (event: PointerEvent) => {
+      if (!paletteRoot.current?.contains(event.target as Node))
+        setPalette(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [palette]);
   const [base, setBase] = useState(item),
     [editing, setEditing] = useState(false),
     [dirty, setDirty] = useState(false),
@@ -176,7 +191,68 @@ export function NoteEditor({
     });
   };
   return (
-    <div className={`connected-note-editor${compact ? " is-compact" : ""}`}>
+    <div
+      className={`connected-note-editor sp-note-editor${compact ? " is-compact" : ""}`}
+      data-color={draft.color}
+    >
+      {!compact && (
+        <div className="sp-note-heading">
+          <span className="sp-pill">Shared</span>
+          {authorName && <span className="sp-note-author">{authorName}</span>}
+        </div>
+      )}
+      {editable && (
+        <div
+          ref={paletteRoot}
+          className="sp-note-controls"
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && palette) {
+              e.preventDefault();
+              e.stopPropagation();
+              setPalette(false);
+              paletteButton.current?.focus();
+            }
+          }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget)) setPalette(false);
+          }}
+        >
+          <button
+            ref={paletteButton}
+            type="button"
+            className="sp-note-tool"
+            aria-label="Note color"
+            aria-haspopup="dialog"
+            aria-expanded={palette}
+            onClick={() => setPalette(!palette)}
+          >
+            <span className="sp-note-color-preview" aria-hidden="true" />
+          </button>
+          {palette && (
+            <div
+              className="sp-note-options sp-note-palette"
+              role="dialog"
+              aria-label="Note color"
+            >
+              {colors.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className="sp-note-swatch"
+                  data-note-color={color}
+                  aria-label={color[0].toUpperCase() + color.slice(1)}
+                  aria-pressed={draft.color === color}
+                  onClick={() => {
+                    edit({ color });
+                    setPalette(false);
+                    paletteButton.current?.focus();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {editable ? (
         <input
           aria-label={`Note title: ${item.data.title}`}
@@ -267,20 +343,6 @@ export function NoteEditor({
           }}
         >
           <NoteMarkdown text={draft.body} items={items} open={open} />
-        </div>
-      )}
-      {!compact && editable && (
-        <div className="connected-colors" aria-label="Note color">
-          {colors.map((color) => (
-            <button
-              type="button"
-              key={color}
-              data-color={color}
-              aria-label={color}
-              aria-pressed={draft.color === color}
-              onClick={() => edit({ color })}
-            />
-          ))}
         </div>
       )}
       {(dirty || saving || error) && (
@@ -473,6 +535,7 @@ export function PaperCard({
   actor,
   manager,
   namespace,
+  authorName,
   focused,
   focus,
 }: {
@@ -488,6 +551,7 @@ export function PaperCard({
   actor?: string;
   manager: boolean;
   namespace?: string;
+  authorName?: string;
   focused: boolean;
   focus: () => void;
 }) {
@@ -583,7 +647,9 @@ export function PaperCard({
       data-kind={item.kind}
       data-color={resource ? "blue" : item.data.color || "yellow"}
       style={{
-        left: geometry.x,
+        left: resource
+          ? geometry.x
+          : `max(calc(var(--app-space, 0px) + 8px), ${geometry.x}px)`,
         top: geometry.y,
         width: geometry.width,
         height: geometry.height,
@@ -809,7 +875,9 @@ export function PaperCard({
           </>
         ) : (
           <>
-            <NoteEditor {...{ item, items, change, open, onDirty, editable }} />
+            <NoteEditor
+              {...{ item, items, change, open, onDirty, editable, authorName }}
+            />
             <Relations {...{ item, items, edges, connect, unlink, open }} />
             <Attachments item={item.id} />
             {editable && (

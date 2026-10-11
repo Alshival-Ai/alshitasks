@@ -809,6 +809,9 @@ export function ProjectsApp({
             !item.data.deleted &&
             !item.data.archived && (
               <PaperCard
+                authorName={
+                  members.find((m) => m.id === item.author_id)?.display_name
+                }
                 key={id}
                 item={item}
                 items={items}
