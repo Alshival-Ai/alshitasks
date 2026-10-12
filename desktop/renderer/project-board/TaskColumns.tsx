@@ -311,7 +311,9 @@ export function TaskColumns({
                       onPointerCancel={cancel}
                     >
                       <p className="sp-card-kind">
-                        {item.kind === "ticket" ? "Service ticket" : "Task"}
+                        {item.kind === "ticket"
+                          ? "Service ticket"
+                          : item.number != null ? `Task #${item.number}` : "Task"}
                       </p>
                       {manager && (
                         <details className="sp-task-menu">

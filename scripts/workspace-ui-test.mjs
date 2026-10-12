@@ -52,7 +52,7 @@ await page.addInitScript(() => {
       data: { title: "Planning" },
     },
   ];
-  const task = {id:"task-one",kind:"task",revision:1,author_id:"member-one",data:{type_id:"bug",label_ids:["backend"],title:"Assignment fixture",board_id:"board-one",status_id:"todo",state:"todo",assignee:null,body:"",visibility:"team",priority:"normal",deleted:false,archived:false,checklist:[]}};
+  const task = {number:17,id:"task-one",kind:"task",revision:1,author_id:"member-one",data:{type_id:"bug",label_ids:["backend"],title:"Assignment fixture",board_id:"board-one",status_id:"todo",state:"todo",assignee:null,body:"",visibility:"team",priority:"normal",deleted:false,archived:false,checklist:[]}};
   window.calls = [];
   window.externalLinks = [];
   window.tasks = {
@@ -112,6 +112,7 @@ await page.addInitScript(() => {
         };
       return {
         items: [],
+        attachments: [],
         next: null,
         boards: [],
         edges: [],
@@ -241,6 +242,10 @@ try {
   await page.screenshot({
     path: join(artifacts, "workspace-board-desktop.png"),
   });
+  assert.equal(await page.locator('.sp-card-kind').textContent(), 'Task #17');
+  await page.getByRole('button', {name:'Assignment fixture',exact:true}).click();
+  assert.equal(await page.locator('.task-detail-header .sp-eyebrow').textContent(), 'Task #17');
+  await page.getByRole('button', {name:'Close item',exact:true}).click();
   const assignee = page.getByRole('button',{name:'Assign Assignment fixture',exact:true});
   await assignee.click();
   const picker = page.getByRole('dialog',{name:'Assign task',exact:true});

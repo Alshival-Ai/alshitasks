@@ -16,6 +16,8 @@ The service exposes the same JSON `/v1` routes over a private Unix socket and, w
 | GET `/v1/monitoring` | Confirmed health and incidents | monitor:read |
 | POST `/v1/heartbeat` | Collector heartbeat | monitor:heartbeat, exact resource grant |
 
+Task responses include a read-only top-level `number`. Local tasks receive persistent numbers; synced tasks use their portal number. An unsynced shared task (or an older portal without number support) returns `null` until the portal supplies its number. Numbers are not editable fields and are not sent in task mutation data.
+
 Item mutations require `idempotency_key`; edits/actions also require the observed `revision`. Reusing a key with different content returns 409. REST errors return `{ "error": { "message": "..." } }` with 400 malformed, 401 authentication, 403 authorization, 404 missing, 409 revision conflict or 413 too large.
 
 Ingestion accepts at most 100 events and 1 MiB per batch:

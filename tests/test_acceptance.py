@@ -41,6 +41,20 @@ class Acceptance(unittest.TestCase):
                 item["id"], {"revision": item["revision"], "data": data, "idempotency_key": uid()}
             )
 
+    def test_task_numbers_survive_edits_restart_and_deletion(self):
+        first = self.create()
+        self.create("note")
+        second = self.create()
+        self.assertEqual((first["number"], second["number"]), (1, 2))
+        changed = self.update(first, title="Renamed")
+        self.assertEqual(changed["number"], 1)
+        self.store.db.close()
+        self.store = Store(self.paths)
+        self.assertEqual(self.store.item(second["id"])["number"], 2)
+        with self.store.tx():
+            self.store.db.execute("DELETE FROM items WHERE id=?", (second["id"],))
+        self.assertGreater(self.create()["number"], 2)
+
     def test_offline_first_launch_and_restart(self):
         self.assertEqual(self.store.db.execute("PRAGMA journal_mode").fetchone()[0], "wal")
         x = self.create()

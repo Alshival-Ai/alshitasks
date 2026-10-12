@@ -901,7 +901,11 @@ export function ProjectsApp({
           >
             <header className="task-detail-header">
               <div>
-                <p className="sp-eyebrow">{kind}</p>
+                <p className="sp-eyebrow">
+                  {kind === "task" && selected?.number != null
+                    ? `Task #${selected.number}`
+                    : kind}
+                </p>
                 <h2>{selected?.data.title ?? `New ${kind}`}</h2>
               </div>
               <button

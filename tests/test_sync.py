@@ -81,6 +81,19 @@ class SyncAcceptance(unittest.TestCase):
                 record["id"], {"data": data, "revision": record["revision"], "idempotency_key": uid()}
             )
 
+    def test_portal_number_arrives_without_a_task_data_change(self):
+        self.sync()
+        ident = local_id(self.c["id"], self.record["id"])
+        self.assertIsNone(self.s.item(ident)["number"])
+        self.record["number"] = 17
+        self.sync()
+        self.assertEqual(self.s.item(ident)["number"], 17)
+        edited = self.update(self.s.item(ident), {"title": "Offline edit"})
+        self.assertEqual(edited["number"], 17)
+        self.sync()
+        self.assertEqual(self.s.item(ident)["number"], 17)
+        self.assertNotIn("number", self.s.item(ident)["data"])
+
     def test_nonoverlap_merge_delete_and_stable_revision(self):
         self.sync()
         ident = local_id(self.c["id"], self.record["id"])

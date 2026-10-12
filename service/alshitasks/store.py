@@ -65,6 +65,7 @@ class Store:
         self.db.execute("PRAGMA busy_timeout=5000")
         try:
             self.migrate()
+            self.migrate_task_numbers()
             from . import taxonomy
             taxonomy.migrate(self)
             from . import health, notifications
@@ -158,13 +159,32 @@ class Store:
         with self.lock:
             self.db.execute("INSERT OR REPLACE INTO settings VALUES(?,?)", (key, json.dumps(value)))
 
+    def migrate_task_numbers(self):
+        # Separate immutable metadata: numbers are never editable task fields.
+        # Keep allocations after deletion so a task number is never reused.
+        with self.tx():
+            self.db.execute("CREATE TABLE IF NOT EXISTS local_task_numbers(number INTEGER PRIMARY KEY AUTOINCREMENT, item_id TEXT NOT NULL UNIQUE)")
+            self.db.execute("INSERT INTO local_task_numbers(item_id) SELECT id FROM items WHERE kind='task' AND connection IS NULL AND id NOT IN (SELECT item_id FROM local_task_numbers) ORDER BY created_at,id")
+            self.db.execute("""CREATE TRIGGER IF NOT EXISTS allocate_task_number AFTER INSERT ON items
+                WHEN NEW.kind='task' AND NEW.connection IS NULL BEGIN
+                INSERT OR IGNORE INTO local_task_numbers(item_id) VALUES(NEW.id); END""")
+
     def row(self, row):
         if row is None:
             raise Problem("Record not found", 404)
-        return {
+        result = {
             k: (json.loads(row[k]) if k == "data" else row[k])
             for k in ("id", "kind", "revision", "data", "author_id", "created_at", "updated_at")
         }
+        if row["kind"] == "task":
+            if row["connection"]:
+                remote = self.setting("latest_remote:" + row["id"]) or {}
+                base = self.setting("remote_base:" + row["id"]) or {}
+                result["number"] = remote.get("number", base.get("number"))
+            else:
+                allocated = self.db.execute("SELECT number FROM local_task_numbers WHERE item_id=?", (row["id"],)).fetchone()
+                result["number"] = allocated[0] if allocated else None
+        return result
 
     def item(self, item_id):
         from .workspaces import require_item

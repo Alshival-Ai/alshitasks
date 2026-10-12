@@ -34,6 +34,7 @@ export type ItemData = {
   details: Record<string, string>;
 };
 export type Item = {
+  number?: number | null;
   id: string;
   kind: string;
   revision: number;
