@@ -166,6 +166,10 @@ try {
   const custom = (await state()).data.status_id;
   await page.locator(`[data-shared-status="${custom}"]`).click();
   await card.scrollIntoViewIfNeeded();
+  // Keep the drop tab in view; the strip may have scrolled to reveal the custom status.
+  await page
+    .locator(".sp-mobile-filter")
+    .evaluate((el) => el.scrollTo({ left: 0, behavior: "instant" }));
   box = await card.boundingBox();
   await cdp.send("Emulation.setTouchEmulationEnabled", {
     enabled: true,
@@ -177,10 +181,21 @@ try {
       touchPoints:
         type === "touchEnd" || type === "touchCancel" ? [] : [{ x, y }],
     });
-  await touch("touchStart", box.x + 30, box.y + 20);
+  await touch("touchStart", box.x + box.width / 2, box.y + 20);
   await expect(page.locator(".sp-drag-layer")).toHaveCount(1);
   const tab = page.locator(`[data-shared-status="${start.id}"]`);
   const tabBox = await tab.boundingBox();
+  assert.ok(
+    await tab.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return (
+        document
+          .elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2)
+          ?.closest("button") === el
+      );
+    }),
+    "Touch drop target must be visible and hit-testable",
+  );
   await touch(
     "touchMove",
     tabBox.x + tabBox.width / 2,
@@ -194,7 +209,7 @@ try {
   await tab.click();
   await card.scrollIntoViewIfNeeded();
   box = await card.boundingBox();
-  await touch("touchStart", box.x + 30, box.y + 20);
+  await touch("touchStart", box.x + box.width / 2, box.y + 20);
   await expect(page.locator(".sp-drag-layer")).toHaveCount(1);
   await touch("touchCancel");
   await expect(page.locator(".sp-drag-layer")).toHaveCount(0);

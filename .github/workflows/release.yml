@@ -39,6 +39,13 @@ jobs:
         run: |
           sudo apt-get install -y xvfb ./build/alshitasks_*_amd64.deb
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/task-board-test.mjs
+      - name: Retain failed board screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: task-board-failure
+          path: /tmp/alshitasks-task-board-failure.png
+          if-no-files-found: ignore
       - name: Publish immutable version
         if: steps.version.outputs.publish == 'true'
         env:
