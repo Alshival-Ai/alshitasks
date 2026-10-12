@@ -70,16 +70,18 @@ export function TaxonomyFields({
   labels?: string[];
 }) {
   const [query, setQuery] = useState("");
+  // Preserve an in-progress selection; the service checks current archive state on save.
+  const [choices] = useState(catalog);
   return (
     <>
       <label>
         Type
         <select
           aria-label="Type"
-        name="type_id"
-          defaultValue={type || catalog.types.find((t) => t.is_default)?.id}
+          name="type_id"
+          defaultValue={type || choices.types.find((t) => t.is_default)?.id}
         >
-          {catalog.types
+          {choices.types
             .filter((t) => !t.archived || t.id === type)
             .map((t) => (
               <option key={t.id} value={t.id}>
@@ -99,7 +101,7 @@ export function TaxonomyFields({
           onChange={(e) => setQuery(e.target.value)}
         />
         <div>
-          {catalog.labels
+          {choices.labels
             .filter((l) => !l.archived || labels.includes(l.id))
             .map((l) => (
               <label
@@ -117,7 +119,7 @@ export function TaxonomyFields({
               </label>
             ))}
         </div>
-        {!catalog.labels.length && (
+        {!choices.labels.length && (
           <small>No labels configured in workspace settings.</small>
         )}
       </fieldset>
