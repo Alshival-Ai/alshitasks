@@ -30,6 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y python3-jsonschema libsecret-tools
           npm ci
+          node scripts/startup-preference-test.cjs
           npm run validate
           npm run package:deb
           cd build
@@ -39,6 +40,10 @@ jobs:
         run: |
           sudo apt-get install -y xvfb ./build/alshitasks_*_amd64.deb
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/task-board-test.mjs
+      - name: Check packaged tray and startup
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks ALSHITASKS_ISOLATED_BUS=1 dbus-run-session -- xvfb-run -a node scripts/tray-test.mjs
       - name: Retain failed board diagnostics
         if: failure()
         uses: actions/upload-artifact@v4

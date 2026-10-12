@@ -13,7 +13,7 @@ npm start
 npm run package:deb
 ```
 
-Install the generated `.deb` with `sudo apt install ./build/alshitasks_0.1.3_amd64.deb`. Run `alshitasks` from your application menu. First launch provisions SQLite WAL databases and a per-user service, then enables it at login. Closing the window leaves it running. Pause/stop controls are in Settings and `alshitasks pause`, `resume`, `stop`. Systemd lingering is never enabled. Without user systemd, launch starts a detached service for the current login session.
+Install the generated `.deb` with `sudo apt install ./build/alshitasks_0.1.3_amd64.deb`. Run `alshitasks` from your application menu. First launch provisions SQLite WAL databases and a per-user service, then enables it at login. On Ubuntu with AppIndicator support, closing the window hides the desktop app in the top bar. The dock icon or tray menu reopens the same window. Tray → Quit desktop app exits the desktop while background sync continues. Without a tray host, closing exits the desktop normally. Device settings → Startup → Start at login minimized optionally starts the desktop in the tray at Ubuntu sign-in (off by default, per user and computer); ordinary dock launches always show the window. Pause/stop controls are in Settings and `alshitasks pause`, `resume`, `stop`. Systemd lingering is never enabled. Without user systemd, launch starts a detached service for the current login session.
 
 Each Linux user has separate `$XDG_DATA_HOME/alshitasks`, `$XDG_CONFIG_HOME/alshitasks`, and `$XDG_RUNTIME_DIR/alshitasks` directories (0700), with a private Unix socket (0600) and peer-UID checks. Credentials require a working, unlocked Linux Secret Service. No plaintext fallback exists.
 

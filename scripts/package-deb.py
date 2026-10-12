@@ -62,7 +62,7 @@ Architecture: amd64
 Maintainer: Alshival.Ai <support@alshival.ai>
 Section: utils
 Priority: optional
-Depends: python3 (>= 3.12), python3-jsonschema, python3-gi, libsecret-tools, libsecret-1-0, libgtk-3-0t64, libnss3, libasound2t64, libgbm1, libxss1, libnotify-bin, xdg-utils
+Depends: python3 (>= 3.12), python3-jsonschema, python3-gi, libsecret-tools, libsecret-1-0, libgtk-3-0t64, libnss3, libasound2t64, libgbm1, libxss1, libnotify-bin, libglib2.0-bin, xdg-utils
 Recommends: iputils-ping, python3-psycopg, python3-pymysql, python3-redis, python3-pymongo
 Description: Alshival.Ai standalone Linux desktop application
  Local-first boards, resources, logs, monitoring, SSH aliases and optional portal sync.

@@ -118,12 +118,36 @@ function App() {
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [items, setItems] = useState<Item[]>([]),
+    [loginStartup, setLoginStartup] = useState(false),
+    [startupSaving, setStartupSaving] = useState(false),
     [settings, setSettings] = useState<any>({}),
     [workspaces, setWorkspaces] = useState<any[]>([]),
     [conflicts, setConflicts] = useState<any[]>([]),
     [drafts, setDrafts] = useState<any[]>([]),
     [attachments, setAttachments] = useState<any[]>([]),
     [fileItem, setFileItem] = useState("");
+  useEffect(() => {
+    if (tab !== "Settings") return;
+    const load = () =>
+      void window.tasks
+        .getStartup?.()
+        .then((value) => setLoginStartup(value.enabled))
+        .catch((e) => setError(e.message));
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [tab]);
+  const changeLoginStartup = async (enabled: boolean) => {
+    setStartupSaving(true);
+    setError("");
+    try {
+      setLoginStartup((await window.tasks.setStartup(enabled)).enabled);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setStartupSaving(false);
+    }
+  };
   const [notificationTarget, setNotificationTarget] = useState<{
     id: string;
     serial: number;
@@ -182,7 +206,9 @@ function App() {
   }
   useEffect(() => {
     void refresh().catch((e) => setError(e.message));
-    const update = () => void refresh().catch(() => {});
+    const update = () => {
+      if (!document.hidden) void refresh().catch(() => {});
+    };
     const unsubscribe = window.tasks.onChanged(update);
     const t = setInterval(update, 30000);
     return () => {
@@ -499,6 +525,22 @@ function App() {
           {tab === "Settings" && (
             <>
               <h1>Settings</h1>
+              <section>
+                <h2>Startup</h2>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={loginStartup}
+                    disabled={startupSaving}
+                    onChange={(e) => void changeLoginStartup(e.target.checked)}
+                  />
+                  Start at login minimized
+                </label>
+                <p>
+                  Start in the top bar without opening a window. Applies to your
+                  Ubuntu account on this computer.
+                </p>
+              </section>
               <section>
                 <h2>Notifications</h2>
                 <label>

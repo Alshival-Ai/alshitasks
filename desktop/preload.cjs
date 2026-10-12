@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     request: (path, method = "GET", body) =>
       ipcRenderer.invoke("tasks:request", path, method, body),
+    getStartup: () => ipcRenderer.invoke("tasks:startup-get"),
+    setStartup: (enabled) => ipcRenderer.invoke("tasks:startup-set", enabled),
     windowAction: (action) => ipcRenderer.invoke("tasks:window", action),
     theme: (preference) => ipcRenderer.invoke("tasks:theme", preference),
     onWindowState: (callback) => {

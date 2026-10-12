@@ -3,6 +3,8 @@ declare global {
   interface Window {
     tasks: {
       request: (path: string, method?: string, body?: unknown) => Promise<any>;
+      getStartup: () => Promise<{ enabled: boolean }>;
+      setStartup: (enabled: boolean) => Promise<{ enabled: boolean }>;
       windowAction: (
         action: "state" | "minimize" | "maximize" | "close",
       ) => Promise<boolean>;

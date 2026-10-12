@@ -1,6 +1,7 @@
 const {
   app,
   Menu,
+  Tray,
   nativeTheme,
   BrowserWindow,
   ipcMain,
@@ -25,7 +26,67 @@ const runtime = testRoot
       "alshitasks",
     );
 const socket = path.join(runtime, "service.sock");
-let win, fallback;
+const { getStartup, setStartup } = require("./startup.cjs");
+let win, fallback, tray;
+let quitting = false;
+let openRequested =
+  !process.argv.includes("--start-in-tray") ||
+  process.argv.includes("--notification");
+function showWindow() {
+  openRequested = true;
+  if (!win || win.isDestroyed()) return;
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+function trayHostAvailable() {
+  return new Promise((resolve) =>
+    execFile(
+      "/usr/bin/gdbus",
+      [
+        "call",
+        "--session",
+        "--dest",
+        "org.kde.StatusNotifierWatcher",
+        "--object-path",
+        "/StatusNotifierWatcher",
+        "--method",
+        "org.freedesktop.DBus.Properties.Get",
+        "org.kde.StatusNotifierWatcher",
+        "IsStatusNotifierHostRegistered",
+      ],
+      { timeout: 2000 },
+      (error, stdout) => resolve(!error && /<true>/.test(stdout)),
+    ),
+  );
+}
+async function createTray() {
+  if (!(await trayHostAvailable())) return;
+  try {
+    tray = new Tray(path.join(root, "desktop/assets/alshival-24x24.png"));
+    tray.setToolTip("Alshival.Ai");
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: "Open Alshival.Ai", click: showWindow },
+        { type: "separator" },
+        { label: "Quit desktop app", click: () => app.quit() },
+      ]),
+    );
+    tray.on("click", showWindow);
+  } catch (error) {
+    tray?.destroy();
+    tray = null;
+    console.warn("Tray unavailable:", error.message);
+  }
+}
+app.on("before-quit", () => {
+  quitting = true;
+});
+app.on("will-quit", () => {
+  tray?.destroy();
+  if (testRoot) fallback?.kill();
+});
+app.on("activate", showWindow);
 app.setName("Alshival.Ai");
 app.setPath(
   "userData",
@@ -59,8 +120,7 @@ app.on("second-instance", (_event, argv) => {
       win.webContents.send("tasks:notification", id);
     else pendingNotification = id;
   }
-  win?.show();
-  win?.focus();
+  if (!argv.includes("--start-in-tray") || id) showWindow();
 });
 const command = (cmd, args) =>
   new Promise((resolve, reject) =>
@@ -210,6 +270,8 @@ const handle = (name, fn) =>
     trusted(event);
     return fn(...args);
   });
+handle("tasks:startup-get", () => getStartup());
+handle("tasks:startup-set", (enabled) => setStartup(enabled));
 handle("tasks:notification-initial", () => {
   const id = pendingNotification;
   pendingNotification = null;
@@ -440,6 +502,7 @@ app
     );
     await serviceStart();
     Menu.setApplicationMenu(null);
+    await createTray();
     win = new BrowserWindow({
       frame: false,
       show: false,
@@ -459,7 +522,26 @@ app
         allowRunningInsecureContent: false,
       },
     });
-    win.once("ready-to-show", () => win.show());
+    win.once("ready-to-show", () => {
+      if (openRequested || !tray) showWindow();
+    });
+    let closing = false;
+    win.on("close", (event) => {
+      if (quitting || !tray) return;
+      event.preventDefault();
+      if (closing) return;
+      closing = true;
+      void trayHostAvailable().then((available) => {
+        closing = false;
+        if (quitting || !win || win.isDestroyed()) return;
+        if (available) win.hide();
+        else {
+          tray.destroy();
+          tray = null;
+          win.close();
+        }
+      });
+    });
     for (const event of ["maximize", "unmaximize"])
       win.on(event, () =>
         win.webContents.send("tasks:window-state", win.isMaximized()),
@@ -475,10 +557,12 @@ app
       }
     });
     await win.loadURL("alshitasks://app/index.html");
+    win.on("show", () => win.webContents.send("tasks:changed"));
     let lastRevision,
       checkingRevision = false;
     setInterval(async () => {
-      if (checkingRevision || !win || win.isDestroyed()) return;
+      if (checkingRevision || !win || win.isDestroyed() || !win.isVisible())
+        return;
       checkingRevision = true;
       try {
         const { revision } = await request("/v1/revision");
