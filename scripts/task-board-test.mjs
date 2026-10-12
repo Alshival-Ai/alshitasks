@@ -13,12 +13,27 @@ try {
     chromiumSandbox: true,
     args: [
       "--ozone-platform=" + (process.env.ALSHITASKS_TEST_DISPLAY || "x11"),
+      ...(process.env.CI
+        ? [
+            "--disable-gpu",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
+          ]
+        : []),
       process.env.ALSHITASKS_TEST_APP || path.resolve("."),
     ],
     env: { ...process.env, ALSHITASKS_TEST_ROOT: root },
   });
   const page = await app.firstWindow();
-  page.setDefaultTimeout(10000);
+  page.setDefaultTimeout(20000);
+  await page.bringToFront();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows())
+      window.webContents.setBackgroundThrottling(false);
+  });
+  await page.context().tracing.start({ screenshots: true, snapshots: true });
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator(".project-columns-adapter").waitFor();
   const errors = [];
@@ -101,8 +116,6 @@ try {
   assert.equal(await page.locator(".sp-drag-layer").count(), 0);
 
   // A concurrent edit must be reported without moving the task on failure.
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Emulation.setFocusEmulationEnabled", { enabled: true });
   await card.scrollIntoViewIfNeeded();
   let box = await card.boundingBox();
   await page.mouse.move(box.x + 25, box.y + 18);
@@ -225,6 +238,13 @@ try {
     "Task board: mouse and touch movement, keyboard chooser, custom/legacy statuses, persistence, cancellation and revision-conflict handling passed.",
   );
 } catch (error) {
+  if (app)
+    await (
+      await app.firstWindow()
+    )
+      .context()
+      .tracing.stop({ path: "/tmp/alshitasks-task-board-trace.zip" })
+      .catch(() => {});
   if (app)
     await (
       await app.firstWindow()

@@ -38,13 +38,15 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           sudo apt-get install -y xvfb ./build/alshitasks_*_amd64.deb
-          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/task-board-test.mjs
-      - name: Retain failed board screenshot
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/task-board-test.mjs
+      - name: Retain failed board diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: task-board-failure
-          path: /tmp/alshitasks-task-board-failure.png
+          path: |
+            /tmp/alshitasks-task-board-failure.png
+            /tmp/alshitasks-task-board-trace.zip
           if-no-files-found: ignore
       - name: Publish immutable version
         if: steps.version.outputs.publish == 'true'
