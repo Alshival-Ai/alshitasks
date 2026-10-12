@@ -11,7 +11,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "after": {
             "type": "string",
@@ -136,7 +136,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "id": {
             "type": "string",
@@ -212,7 +212,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "idempotency_key": {
             "type": "string",
@@ -544,7 +544,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "id": {
             "type": "string",
@@ -885,7 +885,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "id": {
             "type": "string",
@@ -988,7 +988,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           }
         },
         "required": [],
@@ -1073,7 +1073,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "after": {
             "type": "string",
@@ -1134,7 +1134,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "board_id": {
             "type": "string",
@@ -1216,7 +1216,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "operation": {
             "enum": [
@@ -1360,7 +1360,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "id": {
             "type": "string",
@@ -1464,7 +1464,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           }
         },
         "required": [],
@@ -1541,7 +1541,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "idempotency_key": {
             "type": "string",
@@ -1634,7 +1634,7 @@
           "workspace_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Local workspace identifier returned by workspace_list. Omit for backward-compatible unscoped access; never uses the UI selection."
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
           },
           "id": {
             "type": "string",
@@ -1710,31 +1710,6 @@
           "revision",
           "deleted",
           "created_at"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "workspace_list",
-      "description": "Discover local and account workspace identifiers and synchronization status.",
-      "readOnly": true,
-      "inputSchema": {
-        "type": "object",
-        "properties": {},
-        "additionalProperties": false
-      },
-      "outputSchema": {
-        "type": "object",
-        "properties": {
-          "workspaces": {
-            "type": "array",
-            "items": {
-              "type": "object"
-            }
-          }
-        },
-        "required": [
-          "workspaces"
         ],
         "additionalProperties": false
       }
@@ -1874,6 +1849,31 @@
           "labels",
           "revision"
         ]
+      }
+    },
+    {
+      "name": "workspace_list",
+      "description": "Discover local and account workspace identifiers and synchronization status.",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "workspaces"
+        ],
+        "additionalProperties": false
       }
     }
   ],

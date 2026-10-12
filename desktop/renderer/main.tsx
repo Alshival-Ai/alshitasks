@@ -215,7 +215,7 @@ function App() {
     setStartupValue(pref);
     const saved = readDeviceState(account, "workspace");
     const target =
-      availableWorkspaces.find((w) => w.id === saved) || availableWorkspaces[0];
+      availableWorkspaces.find((w) => w.id === saved || w.connection_id === saved) || availableWorkspaces[0];
     if (target) {
       selectWorkspace(target.id);
       setWorkspace(target.id);
@@ -492,7 +492,7 @@ function App() {
                 "alshitasks." +
                 (accountInfo.account?.id || "local") +
                 "." +
-                workspace
+                (selectedWorkspace?.connection_id || workspace)
               }
             />
           )}

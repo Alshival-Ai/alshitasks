@@ -56,6 +56,6 @@ class WorkerRecovery(unittest.TestCase):
             self.s.set_setting('active_account', {'id': self.c['account'], 'origin': self.c['origin']})
             self.s.set_setting('sync:' + self.c['id'], {'state': 'up-to-date'})
             self.s.set_setting('worker:graph_loop', {'state': 'retrying'})
-            row = next(r for r in catalog(self.s) if r['id'] == self.c['id'])
+            row = next(r for r in catalog(self.s) if r.get('connection_id') == self.c['id'])
         self.assertEqual(row['sync'], 'offline')
         self.assertIn('retrying', row['error'])

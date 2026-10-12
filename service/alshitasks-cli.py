@@ -36,7 +36,7 @@ def call(paths, url, method="GET", body=None, token=None):
     return value
 
 
-def mcp(paths, grant=None):
+def mcp(paths, grant=None, read_only=False):
     from alshitasks.contract import tools
     from alshitasks.security import Secrets
 
@@ -109,7 +109,8 @@ def mcp(paths, grant=None):
                             name=t["name"],
                             description=t["description"],
                             inputSchema=t["inputSchema"],
-                            annotations={"readOnlyHint": t["readOnly"]},
+                            **({"outputSchema": t["outputSchema"]} if "outputSchema" in t else {}),
+                            annotations={"readOnlyHint": t["readOnly"], "destructiveHint": not t["readOnly"]},
                         )
                         for t in catalog
                     ]
@@ -117,9 +118,9 @@ def mcp(paths, grant=None):
             elif method == "tools/call":
                 name = params["name"]
                 args = params.get("arguments", {})
-                if not grant and (name not in tools() or not tools()[name]["readOnly"]):
+                if read_only and (name not in tools() or not tools()[name]["readOnly"]):
                     if name not in ("logs_query", "monitoring_status", "notifications_read"):
-                        raise Problem("Write access requires an explicit Secret Service grant", 403)
+                        raise Problem("This MCP connection was explicitly started read-only", 403)
                 if name in ("logs_query", "monitoring_status", "notifications_read"):
                     from urllib.parse import urlencode
 
@@ -172,20 +173,29 @@ def mcp(paths, grant=None):
                 raise Problem("Unsupported MCP method", 404)
             print(json.dumps({"jsonrpc": "2.0", "id": ident, "result": result}), flush=True)
         except Exception as e:
-            if request.get("id") is not None:
-                print(
-                    json.dumps(
-                        {
-                            "jsonrpc": "2.0",
-                            "id": request["id"],
-                            "error": {
-                                "code": -32602,
-                                "message": str(e) if isinstance(e, Problem) else "Invalid MCP request",
-                            },
-                        }
-                    ),
-                    flush=True,
-                )
+            if request.get("id") is None:
+                continue
+            if request.get("method") == "tools/call":
+                status = e.status if isinstance(e, Problem) else 503
+                status = 422 if status in (400, 413) else status
+                codes = {
+                    401: ("unauthorized", "Authentication required."),
+                    403: ("forbidden", "Project operation is not permitted."),
+                    404: ("not_found", "Project item is unavailable."),
+                    409: ("conflict", "Project changed; reread before retrying."),
+                    422: ("invalid_arguments", "Check the project arguments and current revision."),
+                    503: ("unavailable", "Project service is temporarily unavailable."),
+                }
+                if status not in codes:
+                    status = 503
+                code, message = codes[status]
+                value = {"error": {"code": code, "message": message, "status": status}}
+                response = {"result": {"isError": True,
+                            "content": [{"type": "text", "text": json.dumps(value)}],
+                            "structuredContent": value}}
+            else:
+                response = {"error": {"code": -32602, "message": "Invalid MCP request"}}
+            print(json.dumps({"jsonrpc": "2.0", "id": request["id"], **response}), flush=True)
 
 
 def main():
@@ -197,7 +207,10 @@ def main():
     c = commands.add_parser("desktop")
     c.add_argument("--notification")
     c = commands.add_parser("mcp")
-    c.add_argument("--grant", help="Secret Service entry ID holding a scoped local token; default read-only")
+    access = c.add_mutually_exclusive_group()
+    access.add_argument("--grant", help="Secret Service entry ID holding a scoped local token; default local-owner access")
+    access.add_argument("--read-only", action="store_true",
+                        help="Restrict the local MCP connection to read-only tools")
     c = commands.add_parser("grant")
     c.add_argument("--scopes", default="project:read")
     c.add_argument("--resource")
@@ -213,7 +226,7 @@ def main():
 
         return run(args.root)
     if args.command == "mcp":
-        return mcp(paths, args.grant)
+        return mcp(paths, args.grant, args.read_only)
     if args.command == "restore":
         from alshitasks.files import restore
 

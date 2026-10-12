@@ -32,7 +32,7 @@ Remote collectors need an operator-managed authenticated reverse proxy or SSH tu
 
 Owner-only Unix socket operations include settings, credential/grant management, attachments, backups, SSH aliases, monitoring configuration, forwarding, and portal connections. No HTTP grant can invoke these.
 
-`alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The shared project contract is in `contracts/project-tools.v1.json`; log, health and notification queries add read-only tools. Default access is read-only; explicit write grants are stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
+`alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The shared project contract is in `contracts/project-tools.v1.json`; log, health and notification queries add read-only tools. Default access is the local owner, including project writes; `--read-only` explicitly restricts tools. Scoped grants can be stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
 
 Connected resource logs: `GET /v1/portal/logs?resource_id=LOCAL_UUID` uses the signed-in user’s live permissions and maps the cached resource ID. `GET /v1/portal/monitoring?resource_id=LOCAL_UUID` reads permitted portal health metadata. These are desktop-owner operations and fail offline rather than borrowing a managed principal.
 
@@ -141,7 +141,7 @@ ICMP needs iputils-ping; database adapters are optional package recommendations.
 `limit` (default 20, maximum 50). It returns `items` and `next_page`, and **never
 marks anything read**. HTTP agents use GET `/v1/notifications` with a personal
 `notifications:read` grant; resource-scoped grants cannot read the personal inbox.
-The default local read-only MCP also exposes the reader without a portal account.
+The local MCP also exposes the reader without a portal account.
 Portal results require a successful current permission refresh; offline agent reads
 return local notifications only. The desktop may display its saved portal cache
 with a stale indicator and disabled portal actions.
@@ -190,3 +190,29 @@ Catalogue snapshots precede tasks. Offline catalogue changes use revisioned outb
 operations. Concurrent catalogue edits require review in workspace settings;
 conflicting task edits retain the existing field review. Old portal connections
 retain their existing behavior until the capability is available.
+
+### Default local-owner MCP access
+
+`alshitasks mcp` can manage the current user's tasks, notes, resources, boards, taxonomy and relationships through the private Unix socket. It uses the service's peer-UID ownership check and needs no keyring or additional token. It exposes the existing MCP catalog only, not arbitrary HTTP routes or command execution. No HTTP port is opened. Portal workspace permissions, revision checks and sync conflicts still apply. `--read-only` explicitly restricts the connection; `--grant ID` uses that credential's scopes instead of owner access. These options are mutually exclusive. Run the per-user service before launching MCP.
+
+
+### Portal contract and identities
+
+The 15 `project_*` tools use the portal's exact input and output schemas,
+checked against `contracts/portal-project-tools.v1.json`; its source commit and
+hash are recorded alongside it. Tool failures use the portal's `isError` result
+with a structured error code, message and status.
+
+Shared workspace `id` equals the portal UUID everywhere in the app and MCP.
+Pass it as `workspace_id` on project calls; `workspace_list` discovers access.
+Device/account connection IDs remain internal sync keys. Saved app selections
+using old connection IDs are still accepted, and existing offline rows, outbox
+entries and layouts are preserved.
+
+The MCP exposes canonical portal IDs for synced records, boards, members,
+statuses and edges, including references and pagination cursors. New offline
+records have provisional IDs until synchronized. Read current IDs and revisions
+before editing; cached revisions describe the local copy and are not a promise
+that the portal has committed a change. Queued changes, permission failures and
+conflicts remain visible in workspace sync status. Local-only workspaces and
+local log/monitoring tools remain desktop extensions, not portal resources.

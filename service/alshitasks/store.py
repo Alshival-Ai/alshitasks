@@ -192,7 +192,7 @@ class Store:
         require_item(self, item_id)
         return self.row(self.db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone())
 
-    def list(self, after="", kind=None, limit=100, board=None, type_ids=None, label_ids=None):
+    def list(self, after="", kind=None, limit=100, board=None, type_ids=None, label_ids=None, canonical_ids=False):
         if not isinstance(limit, int) or not 1 <= limit <= 100:
             raise Problem("limit must be 1..100")
         from .workspaces import LOCAL
@@ -201,18 +201,20 @@ class Store:
         type_ids, label_ids = type_ids or [], label_ids or []
         if any(not isinstance(values, list) or len(values) > 100 or any(not isinstance(v, str) for v in values) for values in (type_ids, label_ids)):
             raise Problem("Invalid type or label filters")
+        sort_id = "COALESCE(remote_id,id)" if canonical_ids else "id"
         rows = self.db.execute(
-            "SELECT * FROM items WHERE id>? AND (? IS NULL OR kind=?) "
+            f"SELECT * FROM items WHERE {sort_id}>? AND (? IS NULL OR kind=?) "
             "AND (? IS NULL OR (?=? AND connection IS NULL) OR connection=?) "
             "AND NOT EXISTS (SELECT 1 FROM settings WHERE key='unavailable:' || items.id AND value='true') "
             "AND (? IS NULL OR json_extract(data,'$.board_id')=?) "
             "AND (?=0 OR (kind='task' AND json_extract(data,'$.type_id') IN (SELECT value FROM json_each(?)))) "
-            "AND (?=0 OR (kind='task' AND EXISTS (SELECT 1 FROM json_each(json_extract(data,'$.label_ids')) labels WHERE labels.value IN (SELECT value FROM json_each(?))))) ORDER BY id LIMIT ?",
+            "AND (?=0 OR (kind='task' AND EXISTS (SELECT 1 FROM json_each(json_extract(data,'$.label_ids')) labels WHERE labels.value IN (SELECT value FROM json_each(?))))) "
+            f"ORDER BY {sort_id} LIMIT ?",
             (after, kind, kind, workspace, workspace, LOCAL, workspace, board, board, len(type_ids), json.dumps(type_ids), len(label_ids), json.dumps(label_ids), limit + 1),
         ).fetchall()
         return dict(
             items=[self.row(r) for r in rows[:limit]],
-            next=rows[limit - 1]["id"] if len(rows) > limit else None,
+            next=(rows[limit - 1]["remote_id"] or rows[limit - 1]["id"]) if canonical_ids and len(rows) > limit else rows[limit - 1]["id"] if len(rows) > limit else None,
         )
 
     def validate(self, kind, data, item_id=None):

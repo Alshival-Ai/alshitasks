@@ -186,7 +186,7 @@ class Protocol(unittest.TestCase):
                     }
                 )
                 p = subprocess.run(
-                    [sys.executable, str(script), "--root", d, "mcp"],
+                    [sys.executable, str(script), "--root", d, "mcp", "--read-only"],
                     input="".join(json.dumps(r) + "\n" for r in requests),
                     capture_output=True,
                     text=True,
@@ -197,7 +197,8 @@ class Protocol(unittest.TestCase):
                 self.assertEqual(results[0]["result"]["serverInfo"]["name"], "alshitasks")
                 self.assertEqual(len(results[1]["result"]["tools"]), 19)
                 self.assertIn("result", results[2])
-                self.assertIn("error", results[3])
+                self.assertTrue(results[3]["result"]["isError"])
+                self.assertEqual(results[3]["result"]["structuredContent"]["error"]["status"], 403)
                 self.assertEqual(
                     results[4]["result"]["structuredContent"], {"events": [], "next_cursor": None}
                 )
@@ -205,6 +206,27 @@ class Protocol(unittest.TestCase):
                 log_tool = next(t for t in results[1]["result"]["tools"] if t["name"] == "logs_query")
                 self.assertIn("cursor", log_tool["inputSchema"]["properties"])
                 self.assertEqual((Path(d) / "runtime/service.sock").stat().st_mode & 0o777, 0o600)
+                # Default owner mode works without a desktop keyring and keeps revision checks.
+                write = requests[3]
+                write["params"]["arguments"]["data"]["title"] = "Local owner write"
+                p = subprocess.run(
+                    [sys.executable, str(script), "--root", d, "mcp"],
+                    input=json.dumps(write) + "\n", capture_output=True, text=True, check=True,
+                )
+                created = json.loads(p.stdout)["result"]["structuredContent"]
+                update = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {
+                    "name": "project_update", "arguments": {"id": created["id"], "revision": 999,
+                    "idempotency_key": uid(), "data": {"title": "Conflict"}}}}
+                p = subprocess.run(
+                    [sys.executable, str(script), "--root", d, "mcp"],
+                    input=json.dumps(update) + "\n", capture_output=True, text=True, check=True,
+                )
+                self.assertTrue(json.loads(p.stdout)["result"]["isError"])
+                self.assertEqual(json.loads(p.stdout)["result"]["structuredContent"]["error"]["status"], 409)
+                p = subprocess.run([sys.executable, str(script), "--root", d, "mcp",
+                                    "--read-only", "--grant", "fixture"], capture_output=True)
+                self.assertNotEqual(p.returncode, 0)
+
             finally:
                 service.terminate()
                 service.communicate(timeout=10)

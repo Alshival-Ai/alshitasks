@@ -98,7 +98,7 @@ def rows(s, q, owner=False):
         "(n.source='local' OR (n.account=? AND ? AND (n.workspace_id IS NULL OR n.workspace_id IN (SELECT value FROM json_each(?)))))",
         "(n.resource_id IS NULL OR NOT EXISTS(SELECT 1 FROM settings WHERE key='unavailable:'||n.resource_id AND value='true'))",
     ]
-    from .workspaces import catalog
+    from .workspaces import catalog, connection_id, workspace_id
 
     clauses.append(
         "(n.source!='local' OR n.workspace_id IS NULL OR n.workspace_id IN (SELECT value FROM json_each(?)))"
@@ -107,7 +107,7 @@ def rows(s, q, owner=False):
         ident,
         bool(a) and status.get("authorized", False) and (owner or not status.get("stale", True)),
         json.dumps(workspaces),
-        json.dumps([w["id"] for w in catalog(s) if w["state"] not in {"revoked", "unavailable"}]),
+        json.dumps([w.get("connection_id", w["id"]) for w in catalog(s) if w["state"] not in {"revoked", "unavailable"}]),
     ]
     unread_count = s.db.execute(
         "SELECT COUNT(*) FROM app_notifications n WHERE "
@@ -130,8 +130,11 @@ def rows(s, q, owner=False):
         clauses.append("n.source=?")
         args.append(extra["source"])
     if extra.get("workspace_id"):
-        clauses.append("n.workspace_id=?")
-        args.append(extra["workspace_id"])
+        ident = extra["workspace_id"]
+        mapped = connection_id(s, ident)
+        canonical = workspace_id(s, mapped)
+        clauses.append("((n.source='local' AND n.workspace_id=?) OR (n.source!='local' AND n.workspace_id=?))")
+        args.extend([mapped, canonical])
     limit = q.get("limit", 20)
     page = q.get("page", 1)
     result = s.db.execute(
@@ -146,7 +149,7 @@ def rows(s, q, owner=False):
             title=r["title"],
             body=r["body"],
             event_type=r["event_type"],
-            workspace_id=r["workspace_id"],
+            workspace_id=workspace_id(s, r["workspace_id"]) if r["source"] == "local" and r["workspace_id"] else r["workspace_id"],
             destination=r["destination"],
             created_at=r["created_at"],
             read=bool(r["read_at"]),

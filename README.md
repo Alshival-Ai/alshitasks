@@ -21,7 +21,8 @@ Each Linux user has separate `$XDG_DATA_HOME/alshitasks`, `$XDG_CONFIG_HOME/alsh
 
 See [local API](docs/api.md), [architecture](docs/architecture.md), [acceptance](docs/acceptance.md), and [source provenance](docs/provenance.json).
 
-`alshitasks mcp` runs stdio MCP, read-only by default. Grant explicit write access:
+`alshitasks mcp` runs stdio MCP with full local-owner project access by default.
+Use `alshitasks mcp --read-only` to restrict it, or create a scoped grant:
 
 ```
 alshitasks grant --scopes project:read,project:write --name 'My agent'
@@ -45,3 +46,7 @@ Sign-in uses the fixed Alshival.Ai portal origin. No URL configuration is needed
 ### Automatic stable releases
 
 Every push to `main` builds and tests a Debian release. CI uses the package version when it exceeds all existing release versions; otherwise it allocates the next patch version. Generated package/lock versions stay in CI, and the immutable release points to the exact source commit. Rerunning an already published commit skips publication. Failed builds do not publish. Alshival machines install published releases through their system updater; open desktop windows load the new UI when reopened.
+
+### Default local-owner MCP access
+
+`alshitasks mcp` can manage the current user's tasks, notes, resources, boards, taxonomy and relationships through the private Unix socket. It uses the service's peer-UID ownership check and needs no keyring or additional token. It exposes the existing MCP catalog only, not arbitrary HTTP routes or command execution. No HTTP port is opened. Portal workspace permissions, revision checks and sync conflicts still apply. `--read-only` explicitly restricts the connection; `--grant ID` uses that credential's scopes instead of owner access. These options are mutually exclusive. Run the per-user service before launching MCP.

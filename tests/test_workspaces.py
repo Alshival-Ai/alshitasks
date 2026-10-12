@@ -68,6 +68,8 @@ class Workspaces(unittest.TestCase):
         rows = catalog(self.s)
         self.assertEqual(rows[0]['id'], LOCAL)
         remote = next(r for r in rows if r.get('portal_workspace_id') == self.remote[0]['id'])
+        self.assertEqual(remote['id'], self.remote[0]['id'])
+        self.assertIn(remote['connection_id'], self.ids)
         self.assertEqual((remote['kind'], remote['unread']), ('internal', 3))
         self.assertEqual(remote['settings_url'], '/workspace/settings/')
         self.assertEqual(remote['neural_labs_url'], '/workspace/labs/')
@@ -143,3 +145,14 @@ class Workspaces(unittest.TestCase):
             self.s.db.execute("SELECT connection FROM items WHERE id=?", (board["id"],)).fetchone()[0],
             self.ids[0],
         )
+
+    def test_portal_workspace_uuid_and_legacy_id_resolve_same_records(self):
+        connection = self.ids[0]
+        portal_id = self.s.db.execute('SELECT workspace FROM connections WHERE id=?', (connection,)).fetchone()[0]
+        board = self.create(connection)
+        with self.s.tx():
+            canonical = self.api.tool('project_list', {'workspace_id': portal_id}, owner=True)
+            legacy = self.api.tool('project_list', {'workspace_id': connection}, owner=True)
+            self.assertEqual(canonical, legacy)
+            self.assertEqual(canonical['items'][0]['id'], board['id'])
+            self.assertEqual(self.s.db.execute('SELECT connection FROM items WHERE id=?', (board['id'],)).fetchone()[0], connection)

@@ -25,7 +25,8 @@ def start(store, body):
     account = store.setting("active_account")
     if not account:
         raise Problem("Sign in before publishing")
-    connection = Portal(store).connection(body["workspace_id"])
+    from .workspaces import connection_id
+    connection = Portal(store).connection(connection_id(store, body["workspace_id"]))
     if (
         connection["state"] != "connected"
         or connection["account"] != account["id"]

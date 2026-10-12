@@ -49,7 +49,7 @@ def available(s, ident):
     if not item or s.setting("unavailable:" + ident, False):
         return False
     data = json.loads(item["data"])
-    workspaces = {w["id"] for w in catalog(s) if w["state"] != "revoked"}
+    workspaces = {w.get("connection_id", w["id"]) for w in catalog(s) if w["state"] != "revoked"}
     return (
         not data.get("deleted") and not data.get("archived") and (item["connection"] or LOCAL) in workspaces
     )

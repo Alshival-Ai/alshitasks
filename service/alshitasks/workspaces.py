@@ -1,4 +1,4 @@
-"""Local workspace identities, independent of UI selection and portal IDs."""
+"""Canonical workspace identities with private, account-specific sync connections."""
 
 from contextlib import contextmanager
 from .store import Problem
@@ -35,7 +35,8 @@ def catalog(store):
         incoming = int(store.setting("sync_notice:" + r["id"], 0)) > store.setting("sync_ack:" + r["id"], 0)
         rows.append(
             {
-                "id": r["id"],
+                "id": r["workspace"],
+                "connection_id": r["id"],
                 "name": meta.get("name", r["workspace"]),
                 "local": False,
                 "kind": meta.get("kind", "customer"),
@@ -59,12 +60,30 @@ def catalog(store):
     return rows
 
 
+def connection_id(store, ident):
+    """Resolve a public workspace UUID in the active account; accept old IDs for saved state."""
+    if ident is None or ident == LOCAL:
+        return ident
+    rows = catalog(store)
+    matches = [w for w in rows if w['id'] == ident]
+    if not matches:
+        matches = [w for w in rows if w.get('connection_id') == ident]
+    if len(matches) != 1:
+        raise Problem('Workspace unavailable', 404)
+    return matches[0]['connection_id']
+
+
+def workspace_id(store, connection):
+    if connection is None or connection == LOCAL:
+        return LOCAL
+    row = store.db.execute('SELECT workspace FROM connections WHERE id=?', (connection,)).fetchone()
+    return row['workspace'] if row and row['workspace'] else connection
+
+
 @contextmanager
 def scope(store, ident):
     previous = getattr(store, "workspace", None)
-    if ident is not None and ident not in {w["id"] for w in catalog(store)}:
-        raise Problem("Workspace unavailable", 404)
-    store.workspace = ident if ident is not None else previous
+    store.workspace = connection_id(store, ident) if ident is not None else previous
     try:
         yield
     finally:

@@ -78,7 +78,8 @@ class API:
         if not isinstance(body, dict):
             raise Problem("JSON object required")
         if path == "/v1/mcp":
-            return self.tool(body.get("name"), body.get("arguments", {}), owner=owner, token=token)
+            from .mcp_parity import call
+            return call(self, body.get("name"), body.get("arguments", {}), owner=owner, token=token)
         resource = body.get("resource_id") or q.get("resource_id")
         if not owner:
             scope = (
@@ -111,8 +112,6 @@ class API:
             return {"revision": s.db.total_changes}
         if path == "/v1/health":
             return {"ok": True, "version": "0.1.4"}
-        if path == "/v1/mcp":
-            return self.tool(body.get("name"), body.get("arguments", {}), owner=owner, token=token)
         if path.startswith("/v1/projects"):
             suffix = path[len("/v1/projects") :]
             parts = suffix.strip("/").split("/")
@@ -466,7 +465,7 @@ class API:
         if path == "/v1/drafts":
             from .workspaces import catalog
 
-            allowed = {w["id"] for w in catalog(s)}
+            allowed = {w.get("connection_id", w["id"]) for w in catalog(s)}
             return {
                 "drafts": [
                     dict(r)
@@ -505,7 +504,7 @@ class API:
                 result["local_revision"] = current["revision"]
                 return result
 
-            allowed = {w["id"] for w in catalog(s)}
+            allowed = {w.get("connection_id", w["id"]) for w in catalog(s)}
             return {
                 "conflicts": [
                     review(r)
@@ -520,10 +519,12 @@ class API:
         raise Problem("Endpoint unavailable", 404)
 
     def tool(self, name, args, owner=False, token=""):
+        return self.conform_tool_result(name, self.execute_tool(name, args, owner, token))
+
+    def conform_tool_result(self, name, result):
         from .contract import tools
         import jsonschema
 
-        result = self.execute_tool(name, args, owner, token)
         schema = tools()[name]["outputSchema"]
 
         def conform(value, schema):
