@@ -295,7 +295,7 @@ export function WorkspaceDirectory({
                   : "Client workspace"}
             </p>
             {w.id === current && (
-              <span className="wd-badge">Current workspace</span>
+              <span className="wd-badge">Current</span>
             )}
             {typeof w.unread === "number" && w.unread > 0 && (
               <span className="wd-badge">{w.unread} unread</span>
@@ -315,11 +315,11 @@ export function WorkspaceDirectory({
         <p className="wd-empty">No workspaces match your search.</p>
       )}
       <nav className="wd-pagination" aria-label="Workspace pages">
-        <button disabled={actual === 1} onClick={() => setPage(actual - 1)}>
+        <button className="wd-page-link" disabled={actual === 1} onClick={() => setPage(actual - 1)}>
           Previous
         </button>
         <span>Page {actual}</span>
-        <button disabled={actual === pages} onClick={() => setPage(actual + 1)}>
+        <button className="wd-page-link" disabled={actual === pages} onClick={() => setPage(actual + 1)}>
           Next
         </button>
       </nav>

@@ -18,6 +18,8 @@ import { readDeviceState, writeDeviceState } from "./deviceState";
 import { LOCAL_WORKSPACE, selectWorkspace } from "./project-board/api";
 const api = window.tasks.request;
 const sidebarIcons = new URL("./sidebar-icons.svg?no-inline", import.meta.url).href;
+import "./portal-controls.css";
+import "./project-board/portal/portal-actions.css";
 import "./sidebar.css";
 import "./sidebar.js";
 function NavIcon({ name }: { name: string }) {

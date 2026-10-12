@@ -1,3 +1,4 @@
+import { AssigneePicker } from "./AssigneePicker";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -352,27 +353,7 @@ export function TaskColumns({
                         </button>
                       </h4>
                       <div className="sp-card-meta">
-                        <label className="project-assignee">
-                          <span className="sr-only">
-                            Assign {item.data.title}
-                          </span>
-                          <select
-                            aria-label={`Assign ${item.data.title}`}
-                            value={item.data.assignee ?? ""}
-                            onChange={(event) =>
-                              void change(item, {
-                                assignee: event.target.value || null,
-                              }).catch((error) => report(error.message))
-                            }
-                          >
-                            <option value="">Unassigned</option>
-                            {members.map((member) => (
-                              <option key={member.id} value={member.id}>
-                                {member.display_name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
+                        <AssigneePicker item={item} members={members} change={change} report={report} />
                         {item.data.due_on && (
                           <time dateTime={item.data.due_on}>
                             {item.data.due_on}

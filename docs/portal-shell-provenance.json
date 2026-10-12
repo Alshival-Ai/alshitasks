@@ -13,5 +13,14 @@
       "customer_hub/static/customer_hub/sidebar-icons.svg": "de49b69f4504e979385cc2070bb6a84c302be46faf92a7b103ca3f374ac12284"
     },
     "adaptations": "Identical vendored assets; React renders semantic buttons in place of portal links. Neural Labs opens in the browser only when connected discovery supplies an eligible destination. Sidebar preferences are per desktop account."
+  },
+  "controls": {
+    "source_commit": "c5a672ab721dec7970a15fd0acd7da1da1bb86b0",
+    "files": {
+      "customer_hub/static/customer_hub/hub.css": "b9dc24226fa2b641bc02d837cf81a2b269a3cbd044849a6fbc0fc12ecfce4f54",
+      "customer_hub/static/customer_hub/portal-actions.css": "214797061d7d8c524e66584f371cb51006fc9b22f16357675d1fe6a6b2901f9f",
+      "customer_hub/static/customer_hub/shared-project.css": "cf18f4ef8c26df07cc462632b867c7714ce6ed766f03b29c6c5ab488796e3fd8"
+    },
+    "adaptations": "portal-actions.css is vendored unchanged. portal-controls.css scopes hub.css typography, theme variables, button dimensions and disclosure headings to native surfaces. AssigneePicker.tsx uses the portal quick-assignment markup and shared-project.css with local revisioned mutations; no portal runtime dependency."
   }
 }

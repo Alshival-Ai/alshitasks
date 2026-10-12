@@ -17,3 +17,9 @@ Run `npm run build` and the Python tests. Serve `dist` on port 8383 and run `nod
 `sidebar.css`, `sidebar.js` and `sidebar-icons.svg` are vendored from the portal (see `docs/portal-shell-provenance.json`). They require no portal connection. Both products use a click-only 256px sidebar / 72px icon rail, always-visible workspace badges, one vertical scroll area, board choices nested under the active workspace and a fixed Neural Labs footer when discovery supplies an eligible destination. Single-board workspaces omit redundant board navigation; management stays on Workspaces. Mobile uses a drawer with focus trapping and Escape. Desktop expansion preferences are local and account-scoped.
 
 Browser validation also covers both themes, rail icon visibility, horizontal overflow, hover stability, board popovers, Neural Labs links and mobile dismissal.
+
+## Portal controls and assignment
+
+`portal-actions.css` is copied unchanged from the portal. `portal-controls.css` supplies the scoped portal typography, palette and control dimensions that otherwise come from `hub.css`, without importing the portal's application layout or requiring a connection. Asset revisions and hashes are recorded in the provenance manifests. Keep these foundations and the copied action styles together when updating portal parity.
+
+Task-card assignment uses the portal's searchable quick picker (`sp-assignee` / `sp-quick-popover`) with the desktop's local member catalog and existing revisioned mutations. Failed saves retain the previous assignment and show an error; selecting Unassigned clears it. Escape restores focus to the trigger. The workspace browser fixture covers assignment, clearing, search, failure recovery and light/dark button styles, and exports rendered control styles for comparison with portal fixtures.

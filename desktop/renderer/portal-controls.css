@@ -1,0 +1,81 @@
+/* Portal hub.css foundations, scoped to the native surfaces. Paint is vendored
+   separately in portal-actions.css so portal action hierarchy remains authoritative. */
+body.native-workspaces {
+  --matrix-color-b: #7b4dff;
+  --paper: #f6f4ef;
+  --bright: #fffef9;
+  --ink: #0b0c11;
+  --muted: #62636b;
+  --line: #dedcd6;
+  --surface: #eeece6;
+  font:
+    14px/1.65 "Public Sans",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.dark-style body.native-workspaces {
+  --paper: #000;
+  --bright: #000;
+  --ink: #f4f2ed;
+  --muted: #a5a7b3;
+  --line: #2b2b2b;
+  --surface: #000;
+}
+:where(.native-workspaces .wd-directory, .native-workspaces .projects-app)
+  .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid transparent;
+  padding: 11px 17px;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  cursor: pointer;
+}
+.native-workspaces .shared-project .button {
+  font-size: 12px;
+  padding: 10px 14px;
+  line-height: 1.4;
+}
+.native-workspaces .wd-directory .wd-open.button {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+.native-workspaces .wd-boards {
+  margin: 12px 0;
+}
+.native-workspaces .wd-boards > summary {
+  font-size: 12px;
+  font-weight: 650;
+}
+.native-workspaces .wd-card-title h2 {
+  font-weight: 700;
+}
+.native-workspaces .wd-pagination .wd-page-link {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+.native-workspaces .wd-pagination .wd-page-link:disabled {
+  visibility: hidden;
+}
+.native-workspaces .wd-pagination .wd-page-link:hover {
+  text-decoration: underline;
+}
+.native-workspaces .projects-app .sp-quick-popover {
+  font: 14px/1.65 "Project Public Sans", sans-serif;
+  margin: 0;
+  inset: auto;
+}
+.native-workspaces .projects-app .sp-quick-popover input {
+  font-weight: 400;
+}

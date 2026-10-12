@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 import assert from "node:assert/strict";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 const artifacts =
@@ -52,6 +52,7 @@ await page.addInitScript(() => {
       data: { title: "Planning" },
     },
   ];
+  const task = {id:"task-one",kind:"task",revision:1,author_id:"member-one",data:{title:"Assignment fixture",board_id:"board-one",status_id:"todo",state:"todo",assignee:null,body:"",visibility:"team",priority:"normal",deleted:false,archived:false,checklist:[]}};
   window.calls = [];
   window.externalLinks = [];
   window.tasks = {
@@ -71,12 +72,15 @@ await page.addInitScript(() => {
         return { item };
       }
       if (p.includes("/items/") && method === "PATCH") {
-        const item = boards.find((b) => b.id === p.split("/").pop());
+        if (window.failAssignment && p.endsWith("/task-one")) throw Error("Assignment could not be saved");
+        const item = [task, ...boards].find((b) => b.id === p.split("/").pop());
         if (item.revision !== body.revision) throw Error("Stale revision");
         Object.assign(item.data, body.data);
         item.revision++;
-        return { item };
+        return item.id === "task-one" ? structuredClone(item) : { item };
       }
+      if (p.endsWith("/members")) return {members:[{id:"member-one",display_name:"Alex Rivera"},{id:"member-two",display_name:"Morgan Lee"}]};
+      if (p.endsWith("/items")) return {items:url.searchParams.get("workspace_id")==="w0" ? [structuredClone(task)] : [],next:null};
       if (p === "/v1/workspaces") return { workspaces: rows };
       if (p === "/v1/portal/account")
         return {
@@ -97,6 +101,9 @@ await page.addInitScript(() => {
           statuses: ["todo", "doing", "done"].map((s, i) => ({
             id: s,
             key: s,
+            board_id: "board-one",
+            category: s,
+            legacy_state: s,
             name: s,
             position: i,
             color: "#8058dd",
@@ -135,7 +142,20 @@ try {
       (p) => p.includes("/items") && p.includes("workspace_id=w"),
     ),
   );
+  assert.equal(await page.locator('.wd-open').first().evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(0, 0, 0)');
+  assert.equal(await page.locator('.wd-boards summary').first().evaluate(e=>getComputedStyle(e).fontWeight),'650');
   await page.screenshot({ path: join(artifacts, "workspaces-desktop.png") });
+  for (const theme of ['light','dark']) {
+    await page.emulateMedia({colorScheme:theme});
+    await page.waitForFunction(theme=>document.documentElement.classList.contains('dark-style') === (theme==='dark'),theme);
+    const styles = await page.evaluate(() => Object.fromEntries(['.wd-open','.wd-badge','.wd-boards summary','.wd-card h2'].map(selector => {
+      const css=getComputedStyle(document.querySelector(selector));
+      return [selector,Object.fromEntries(['color','backgroundColor','fontSize','fontWeight','lineHeight','padding','borderRadius','minHeight'].map(key=>[key,css[key]]))];
+    })));
+    writeFileSync(join(artifacts,`controls-${theme}.json`),JSON.stringify(styles,null,2));
+    await page.screenshot({path:join(artifacts,`workspaces-${theme}.png`)});
+  }
+  await page.emulateMedia({colorScheme:'light'});
   await page.locator(".workspace-toggle").click();
   await page.locator("#workspace-options").waitFor();
   await page.mouse.click(1250, 200);
@@ -217,6 +237,45 @@ try {
   await page.screenshot({
     path: join(artifacts, "workspace-board-desktop.png"),
   });
+  const assignee = page.getByRole('button',{name:'Assign Assignment fixture',exact:true});
+  await assignee.click();
+  const picker = page.getByRole('dialog',{name:'Assign task',exact:true});
+  await picker.waitFor();
+  await picker.getByRole('searchbox',{name:'Find a person'}).fill('nobody');
+  await picker.getByText('No matching people.').waitFor();
+  await picker.getByRole('searchbox',{name:'Find a person'}).fill('Alex');
+  await page.screenshot({path:join(artifacts,'assignee-light.png')});
+  await picker.getByRole('button',{name:'Alex Rivera',exact:true}).click();
+  await picker.waitFor({state:'hidden'});
+  assert.equal(await assignee.textContent(),'Alex Rivera');
+  await assignee.click();
+  await page.keyboard.press('Escape');
+  await picker.waitFor({state:'hidden'});
+  assert(await assignee.evaluate(e=>e===document.activeElement));
+  await assignee.click();
+  await page.evaluate(()=>{ window.failAssignment=true; });
+  await picker.getByRole('button',{name:'Morgan Lee',exact:true}).click();
+  await picker.getByRole('alert').waitFor();
+  assert.equal(await assignee.textContent(),'Alex Rivera');
+  await page.evaluate(()=>{ window.failAssignment=false; });
+  await picker.getByRole('button',{name:'Unassigned',exact:true}).click();
+  await picker.waitFor({state:'hidden'});
+  assert.equal(await assignee.textContent(),'Unassigned');
+  await page.emulateMedia({colorScheme:'dark'});
+  assert.equal(await page.getByRole('button',{name:'New task +',exact:true}).evaluate(e=>getComputedStyle(e).backgroundColor),'rgb(255, 255, 255)');
+  await assignee.click();
+  await page.screenshot({path:join(artifacts,'assignee-dark.png')});
+  await page.getByRole('heading',{name:'Tracegrade',exact:true,level:1}).click();
+  await picker.waitFor({state:'hidden'});
+  await page.setViewportSize({width:390,height:844});
+  await assignee.click();
+  const rect = await picker.boundingBox();
+  assert(rect.x >= 0 && rect.x + rect.width <= 390);
+  assert(rect.y >= 0 && rect.y + rect.height <= 844);
+  await page.screenshot({path:join(artifacts,'assignee-mobile.png')});
+  await page.keyboard.press('Escape');
+  await page.setViewportSize({width:1440,height:1000});
+  await page.emulateMedia({colorScheme:'light'});
   const rail = page.locator('.app-sidebar');
   await rail.getByRole('button',{name:'Neural Labs (opens in browser)',exact:true}).click();
   assert.equal((await page.evaluate(() => window.externalLinks)).at(-1),'https://alshival.ai/workspace/w0/neural-labs/');

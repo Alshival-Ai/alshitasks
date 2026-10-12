@@ -33,7 +33,7 @@
   background: var(--paper);
   color: var(--ink);
   font:
-    14px/1.5 "Project Public Sans",
+    14px/1.65 "Project Public Sans",
     sans-serif;
   color-scheme: light;
 }
@@ -44,27 +44,6 @@
 .projects-app button {
   font-family: inherit;
   cursor: pointer;
-}
-.projects-app .button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  text-decoration: none;
-  border: 1px solid var(--line);
-  background: var(--paper);
-  color: var(--ink);
-  font-weight: 600;
-  cursor: pointer;
-}
-.projects-app .button.matrix-btn {
-  color: #fff;
-  background: var(--matrix-color-b);
-  border-color: var(--matrix-color-b);
-}
-.projects-app .button.btn-frost {
-  background: color-mix(in srgb, var(--ink) 8%, var(--paper));
-  color: var(--ink);
 }
 .projects-app button:disabled {
   opacity: 0.55;
@@ -132,14 +111,7 @@
   white-space: nowrap;
   z-index: 10;
 }
-.projects-app .sp-card .project-assignee select {
-  padding: 2px;
-  border: 0;
-  font-size: 10px;
-  color: var(--muted);
-  background: transparent;
-  max-width: 140px;
-}
+
 .projects-app .sp-move {
   border: 0;
   border-radius: 6px;
@@ -248,8 +220,8 @@
 }
 .projects-app .project-item-pane button[type="submit"],
 .projects-app .project-settings button[type="submit"] {
-  background: var(--matrix-color-b);
-  color: #fff;
+  background: var(--portal-action-bg);
+  color: var(--portal-action-fg);
 }
 .projects-app .project-settings {
   clear: both;

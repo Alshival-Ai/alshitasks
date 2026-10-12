@@ -1,0 +1,83 @@
+/* Portal action hierarchy. Legacy class names remain layout/JS hooks; paint lives here.
+   Important paint declarations bridge older Bootstrap and page-specific rules. */
+.app-portal {
+  --portal-action-bg: #000;
+  --portal-action-fg: #fff;
+  --portal-secondary-bg: #e9e7e2;
+  --portal-secondary-fg: #171717;
+  --portal-action-border: #d4d2cd;
+}
+.dark-style .app-portal {
+  --portal-action-bg: #fff;
+  --portal-action-fg: #000;
+  --portal-secondary-bg: #262626;
+  --portal-secondary-fg: #f5f5f5;
+  --portal-action-border: #454545;
+}
+.app-portal :is(.button, .btn-primary, .matrix-btn, .button-primary, .auth-primary-button, .spectrum-button):where(:not(.alshival-launcher, .btn-danger, .btn-outline-danger, .button-themed)) {
+  background: var(--portal-action-bg) !important;
+  color: var(--portal-action-fg) !important;
+  border-color: var(--portal-action-bg) !important;
+  border-radius: 11px;
+  font-weight: 650;
+  text-decoration: none;
+  text-shadow: none;
+  box-shadow: none;
+  transition: box-shadow 150ms ease, opacity 150ms ease;
+}
+.app-portal :is(.button.subtle, .btn-frost, .btn-secondary, .btn-outline-primary, .btn-outline-secondary) {
+  background: var(--portal-secondary-bg) !important;
+  color: var(--portal-secondary-fg) !important;
+  border-color: var(--portal-action-border) !important;
+}
+.app-portal .spectrum-button {
+  background: var(--button-spectrum-fill) !important;
+  color: #0b0c11 !important;
+  border-color: transparent !important;
+}
+.app-portal :is(.button, .btn, .spectrum-button):not(.alshival-launcher):hover {
+  transform: none;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 16%);
+}
+.app-portal :is(.button, .btn, .spectrum-button):focus-visible {
+  outline: 3px solid var(--portal-action-bg) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 2px var(--app-card);
+}
+.app-portal :is(.button, .btn, .spectrum-button):active { box-shadow: none; }
+.app-portal :is(.button, .btn, .spectrum-button):is(:disabled, .disabled, [aria-disabled='true'], [aria-busy='true']) {
+  opacity: .55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+/* Location is a neutral surface and a narrow spectrum marker, even before JS. */
+.app-portal.alshival-app .app-sidebar:not(:has(.wd-navigation)) :is(nav a, .sidebar-bottom > a)[aria-current],
+.app-portal :is(.settings-nav, .account-tabs, .sp-tabs, .sp-thread-tabs) a[aria-current],
+.app-portal :is([role='tab'][aria-selected='true'], .nav-link.active) {
+  position: relative;
+  background: var(--portal-secondary-bg) !important;
+  color: var(--portal-secondary-fg) !important;
+  border-color: var(--portal-action-border) !important;
+}
+.app-portal.alshival-app .app-sidebar:not(:has(.wd-navigation)) :is(nav a, .sidebar-bottom > a)[aria-current]::before,
+.app-portal :is(.settings-nav, .account-tabs, .sp-tabs, .sp-thread-tabs) a[aria-current]::before,
+.app-portal :is([role='tab'][aria-selected='true'], .nav-link.active)::before {
+  content: '';
+  position: absolute;
+  z-index: 1;
+  inset: 25% auto 25% 0;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--app-spectrum);
+  animation: none;
+  opacity: 1;
+  pointer-events: none;
+}
+.app-portal.alshival-app .app-sidebar:not(:has(.wd-navigation)) nav a[aria-current] > :is(svg, .nav-icon) {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-portal :is(.button, .btn, .spectrum-button) { transition: none; }
+}
