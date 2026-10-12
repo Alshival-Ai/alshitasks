@@ -34,6 +34,11 @@ jobs:
           npm run package:deb
           cd build
           sha256sum alshitasks_*_amd64.deb > SHA256SUMS
+      - name: Check packaged task board interactions
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          sudo apt-get install -y xvfb ./build/alshitasks_*_amd64.deb
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/task-board-test.mjs
       - name: Publish immutable version
         if: steps.version.outputs.publish == 'true'
         env:

@@ -12,6 +12,7 @@ type Responsive = {
     states: string[],
   ) => { target: HTMLElement; state: string } | null | undefined;
   isSwipe: () => boolean;
+  resetTouch: () => void;
   touchStart: (event: TouchEvent) => void;
   touchMove: (event: TouchEvent) => boolean;
   touchEnd: () => boolean;

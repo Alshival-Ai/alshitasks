@@ -254,6 +254,10 @@
   border-radius: 10px;
   font: 14px/1.5 sans-serif;
 }
+/* The desktop keeps layout choices in the board rather than a portal overflow menu. */
+.projects-app .project-columns-adapter[data-board-layout]:not([data-board-layout="columns"]) .sp-board-navigation .sp-layout-switch {
+  display: flex;
+}
 .projects-app .sp-filter-toggle {
   display: none;
 }

@@ -1,7 +1,8 @@
 import { TypeIcon, TaskLabels, type Taxonomy } from "./Taxonomy";
 import { AssigneePicker } from "./AssigneePicker";
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { taskDragging } from "./taskDragging";
+import { StatusPicker } from "./StatusPicker";
 import {
   type Item,
   type Status,
@@ -37,101 +38,54 @@ export function TaskColumns({
 }) {
   const root = useRef<HTMLDivElement>(null),
     adapter = useRef<ReturnType<Window["AlshivalResponsiveBoard"]>>(null);
-  const dragged = useRef<Item | null>(null),
-    hold = useRef<ReturnType<typeof setTimeout> | null>(null),
-    point = useRef({ x: 0, y: 0 }),
-    frame = useRef(0),
-    ignoreClick = useRef(false);
-  const [ghost, setGhost] = useState<{
-      title: string;
-      x: number;
-      y: number;
-    } | null>(null),
-    [moving, setMoving] = useState<string | null>(null);
-  const current = useRef({ change, report });
-  current.current = { change, report };
-  const cancel = () => {
-    if (hold.current) clearTimeout(hold.current);
-    hold.current = null;
-    dragged.current = null;
-    setGhost(null);
-    cancelAnimationFrame(frame.current);
-    adapter.current?.finishDrag();
+  const pending = useRef(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const current = useRef({ tasks, statuses, change, report });
+  current.current = { tasks, statuses, change, report };
+  const move = async (item: Item, status: string) => {
+    if (pending.current || status === item.data.status_id) return;
+    pending.current = true;
+    setBusy(true);
+    setMessage("Saving…");
+    try {
+      await current.current.change(item, { status_id: status });
+      setMessage(
+        `Moved to ${current.current.statuses.find((s) => s.id === status)?.name ?? "status"}.`,
+      );
+    } catch (error) {
+      setMessage("");
+      current.current.report((error as Error).message);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
   };
   useEffect(() => {
     if (!root.current) return;
     const life = lifecycle();
+    let gestures: ReturnType<typeof taskDragging> | undefined;
     adapter.current = window.AlshivalResponsiveBoard(root.current, life, {
-      cancel,
+      cancel: () => gestures?.cancel(),
       availableWidth: () => root.current?.clientWidth ?? window.innerWidth,
-      report: (text) => current.current.report(text),
+      report: setMessage,
     });
-    life.listen(
+    gestures = taskDragging(
       root.current,
-      "touchstart",
-      ((event: TouchEvent) => {
-        if (event.touches.length !== 1) {
-          cancel();
-          return;
-        }
-        adapter.current?.touchStart(event);
-      }) as EventListener,
-      { passive: true },
+      life,
+      adapter.current,
+      () => ({ ...current.current, busy: pending.current }),
+      (item, status) => void move(item, status),
+      setMessage,
     );
-    life.listen(
-      root.current,
-      "touchmove",
-      ((event: TouchEvent) => {
-        if (dragged.current) event.preventDefault();
-        else adapter.current?.touchMove(event);
-      }) as EventListener,
-      { passive: false },
-    );
-    life.listen(root.current, "touchend", (() =>
-      adapter.current?.touchEnd()) as EventListener);
-    const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") cancel();
-    };
-    window.addEventListener("keydown", key);
-    window.addEventListener("blur", cancel);
-    return () => {
-      cancel();
-      life.close();
-      window.removeEventListener("keydown", key);
-      window.removeEventListener("blur", cancel);
-    };
+    return () => life.close();
   }, [board, namespace]);
   useEffect(() => adapter.current?.refresh(), [tasks, statuses, expanded]);
-  const move = (item: Item, status: string) => {
-    if (status === item.data.status_id) return;
-    void current.current
-      .change(item, { status_id: status })
-      .catch((error) => current.current.report(error.message));
-    setMoving(null);
-  };
-  const target = (x: number, y: number) => {
-    const swipe = adapter.current?.dragTarget(
-      x,
-      y,
-      statuses.map((status) => status.id),
-    );
-    if (swipe !== undefined) return swipe?.state;
-    const column = document
-      .elementFromPoint?.(x, y)
-      ?.closest<HTMLElement>("[data-sp-state]");
-    return column && root.current?.contains(column)
-      ? column.dataset.spState
-      : undefined;
-  };
-  const tick = () => {
-    if (!dragged.current) return;
-    adapter.current?.dragTick(
-      point.current.x,
-      point.current.y,
-      performance.now(),
-    );
-    frame.current = requestAnimationFrame(tick);
-  };
+  // Older local/API tasks may only have a legacy state. Keep them visible and movable.
+  const statusFor = (item: Item) =>
+    item.data.status_id ??
+    statuses.find((status) => status.legacy_state === item.data.state)?.id ??
+    statuses.find((status) => status.is_default)?.id;
   return (
     <div
       ref={root}
@@ -195,13 +149,11 @@ export function TaskColumns({
               type="button"
               key={status.id}
               data-shared-status={status.id}
+              onClick={() => adapter.current?.select(status.id)}
             >
               {status.name}
               <span>
-                {
-                  tasks.filter((task) => task.data.status_id === status.id)
-                    .length
-                }
+                {tasks.filter((task) => statusFor(task) === status.id).length}
               </span>
             </button>
           ))}
@@ -214,17 +166,6 @@ export function TaskColumns({
               data-sp-state={status.id}
               data-status-label={status.name}
               data-status-color={status.color}
-              onDragOver={(event) => {
-                if (dragged.current) {
-                  event.preventDefault();
-                  point.current = { x: event.clientX, y: event.clientY };
-                }
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragged.current) move(dragged.current, status.id);
-                cancel();
-              }}
             >
               <header>
                 <h3>
@@ -232,88 +173,26 @@ export function TaskColumns({
                   {status.name}
                 </h3>
                 <span>
-                  {
-                    tasks.filter((item) => item.data.status_id === status.id)
-                      .length
-                  }
+                  {tasks.filter((item) => statusFor(item) === status.id).length}
                 </span>
               </header>
               <div className="sp-stack">
                 {tasks
-                  .filter((item) => item.data.status_id === status.id)
+                  .filter((item) => statusFor(item) === status.id)
                   .map((item) => (
                     <article
                       key={item.id}
                       className="sp-card project-task"
                       data-status-color={status.color}
-                      draggable
-                      data-project-card
-                      onClickCapture={(event) => {
-                        if (ignoreClick.current) {
-                          event.preventDefault();
-                          event.stopPropagation();
-                          ignoreClick.current = false;
-                        }
-                      }}
-                      onDragStart={(event) => {
-                        dragged.current = item;
-                        event.dataTransfer.effectAllowed = "move";
-                        event.dataTransfer.setData("text/plain", item.id);
-                        adapter.current?.beginDrag();
-                        tick();
-                      }}
-                      onDragEnd={cancel}
-                      onPointerDown={(event) => {
-                        if (
-                          event.pointerType !== "touch" ||
-                          !(event.target instanceof Element) ||
-                          event.target.closest(
-                            "button:not(.project-text-button),select,input,summary",
-                          )
-                        )
-                          return;
-                        cancel();
-                        point.current = { x: event.clientX, y: event.clientY };
-                        const start = { ...point.current };
-                        hold.current = setTimeout(() => {
-                          dragged.current = item;
-                          ignoreClick.current = true;
-                          adapter.current?.beginDrag();
-                          setGhost({ title: item.data.title, ...start });
-                          tick();
-                        }, 350);
-                      }}
-                      onPointerMove={(event) => {
-                        if (event.pointerType !== "touch") return;
-                        const old = point.current;
-                        point.current = { x: event.clientX, y: event.clientY };
-                        if (dragged.current) {
-                          event.preventDefault();
-                          setGhost({
-                            title: item.data.title,
-                            ...point.current,
-                          });
-                        } else if (
-                          Math.abs(old.x - event.clientX) +
-                            Math.abs(old.y - event.clientY) >
-                          8
-                        )
-                          cancel();
-                      }}
-                      onPointerUp={(event) => {
-                        if (event.pointerType !== "touch") return;
-                        if (dragged.current) {
-                          const state = target(event.clientX, event.clientY);
-                          if (state) move(dragged.current, state);
-                        }
-                        cancel();
-                      }}
-                      onPointerCancel={cancel}
+                      data-project-card={item.id}
+                      aria-busy={busy}
                     >
                       <p className="sp-card-kind">
                         {item.kind === "ticket"
                           ? "Service ticket"
-                          : item.number != null ? `Task #${item.number}` : "Task"}
+                          : item.number != null
+                            ? `Task #${item.number}`
+                            : "Task"}
                       </p>
                       {manager && (
                         <details className="sp-task-menu">
@@ -380,41 +259,20 @@ export function TaskColumns({
                       >
                         {item.data.priority}
                       </span>
-                      <button
-                        type="button"
-                        className="sp-move"
-                        aria-expanded={moving === item.id}
-                        onClick={() =>
-                          setMoving(moving === item.id ? null : item.id)
-                        }
-                      >
-                        Move to…
-                      </button>
-                      {moving === item.id && (
-                        <label className="project-move-menu">
-                          Move {item.data.title}
-                          <select
-                            value={item.data.status_id ?? ""}
-                            onChange={(event) => move(item, event.target.value)}
-                          >
-                            {statuses.map((destination) => (
-                              <option
-                                key={destination.id}
-                                value={destination.id}
-                              >
-                                {destination.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
+                      <StatusPicker
+                        item={item}
+                        statuses={statuses}
+                        statusId={statusFor(item)}
+                        busy={busy}
+                        move={move}
+                      />
                       <TaskLabels
                         ids={item.data.label_ids}
                         catalog={taxonomy}
                       />
                     </article>
                   ))}
-                {!tasks.some((item) => item.data.status_id === status.id) && (
+                {!tasks.some((item) => statusFor(item) === status.id) && (
                   <p className="sp-empty-small">Nothing here yet.</p>
                 )}
               </div>
@@ -422,22 +280,9 @@ export function TaskColumns({
           ))}
         </div>
       </div>
-      {ghost &&
-        createPortal(
-          <div
-            className="project-drag-ghost"
-            style={{
-              position: "fixed",
-              left: ghost.x + 12,
-              top: ghost.y + 12,
-              pointerEvents: "none",
-              zIndex: 10000,
-            }}
-          >
-            {ghost.title}
-          </div>,
-          document.body,
-        )}
+      <p className="sp-board-feedback" role="status" aria-live="polite">
+        {message}
+      </p>
     </div>
   );
 }
