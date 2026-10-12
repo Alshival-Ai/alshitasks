@@ -22,5 +22,14 @@
       "customer_hub/static/customer_hub/shared-project.css": "cf18f4ef8c26df07cc462632b867c7714ce6ed766f03b29c6c5ab488796e3fd8"
     },
     "adaptations": "portal-actions.css is vendored unchanged. portal-controls.css scopes hub.css typography, theme variables, button dimensions and disclosure headings to native surfaces. AssigneePicker.tsx uses the portal quick-assignment markup and shared-project.css with local revisioned mutations; no portal runtime dependency."
+  },
+  "task_taxonomy": {
+    "source_commit": "2da4dec251604293b2b7479e64c51444b43e518e",
+    "files": {
+      "customer_hub/static/customer_hub/task-taxonomy.js": "a8d3f2b907f67a49db0246185a9e64d224d2584f07ce1809bd465730873c344c",
+      "customer_hub/static/customer_hub/task-taxonomy.css": "5b43724a0a6a578244d99a0aa1ad958e2441f80ae808d0190b80739ca80f3e36",
+      "customer_hub/static/customer_hub/task-types.svg": "776e04dd399740dfe4bea65283f6d9c1e63f093cdf07bcded86a9ebefb20dde4"
+    },
+    "adaptations": "Identical bundled workspace settings component, CSS and SVG icons. React task forms and cards use the same styles. Local API transport keeps the desktop self-contained."
   }
 }

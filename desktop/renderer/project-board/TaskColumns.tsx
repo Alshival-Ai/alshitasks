@@ -1,3 +1,4 @@
+import { TypeIcon, TaskLabels, type Taxonomy } from "./Taxonomy";
 import { AssigneePicker } from "./AssigneePicker";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -10,6 +11,7 @@ import {
 } from "./types";
 import "./portal/responsive-board.js";
 export function TaskColumns({
+  taxonomy,
   tasks,
   statuses,
   members,
@@ -21,6 +23,7 @@ export function TaskColumns({
   expanded,
   manager,
 }: {
+  taxonomy: Taxonomy;
   tasks: Item[];
   statuses: Status[];
   members: Member[];
@@ -343,6 +346,11 @@ export function TaskColumns({
                           </button>
                         </details>
                       )}
+                      <TypeIcon
+                        type={taxonomy.types.find(
+                          (t) => t.id === item.data.type_id,
+                        )}
+                      />
                       <h4>
                         <button
                           type="button"
@@ -353,7 +361,12 @@ export function TaskColumns({
                         </button>
                       </h4>
                       <div className="sp-card-meta">
-                        <AssigneePicker item={item} members={members} change={change} report={report} />
+                        <AssigneePicker
+                          item={item}
+                          members={members}
+                          change={change}
+                          report={report}
+                        />
                         {item.data.due_on && (
                           <time dateTime={item.data.due_on}>
                             {item.data.due_on}
@@ -393,6 +406,10 @@ export function TaskColumns({
                           </select>
                         </label>
                       )}
+                      <TaskLabels
+                        ids={item.data.label_ids}
+                        catalog={taxonomy}
+                      />
                     </article>
                   ))}
                 {!tasks.some((item) => item.data.status_id === status.id) && (

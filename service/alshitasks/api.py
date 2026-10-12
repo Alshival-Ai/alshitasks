@@ -95,6 +95,14 @@ class API:
             grant = authorize(s, token, scope, resource)
             if grant["resource_id"] and path not in ("/v1/logs", "/v1/monitoring", "/v1/heartbeat"):
                 raise Problem("Resource grant cannot access project records", 403)
+        if path == "/v1/projects/taxonomy/review" and method == "POST":
+            from .taxonomy import review
+            return review(s, body)
+        if path == "/v1/projects/taxonomy":
+            from . import taxonomy
+            if method == "GET":
+                return taxonomy.catalog(s)
+            return self.execute_tool("project_taxonomy_write", body, owner=owner, token=token)
         if path == "/v1/workspaces":
             from .workspaces import catalog
 
@@ -110,7 +118,7 @@ class API:
             parts = suffix.strip("/").split("/")
             if suffix == "/items":
                 if method == "GET":
-                    return s.list(q.get("after", ""), q.get("kind"), int(q.get("limit", 100)))
+                    return s.list(q.get("after", ""), q.get("kind"), int(q.get("limit", 100)), type_ids=[v for v in q.get("type_ids", "").split(",") if v], label_ids=[v for v in q.get("label_ids", "").split(",") if v])
                 if method == "POST":
                     return s.create(body)
             if len(parts) >= 2 and parts[0] == "items":
@@ -610,6 +618,12 @@ class API:
             }
         if args.get("board_id"):
             s.item(args["board_id"])
+        if name == "project_taxonomy":
+            from .taxonomy import catalog
+            return catalog(s)
+        if name == "project_taxonomy_write":
+            from .taxonomy import configure
+            return configure(s, args)
         if name == "project_statuses":
             return self.status_catalog(args.get("board_id"))
         if name == "project_status_write":

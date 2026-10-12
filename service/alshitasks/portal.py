@@ -32,7 +32,7 @@ def remote(origin, path, token=None, body=None, form=False):
         raise Problem("HTTPS portal origin required")
     if not path.startswith("/") or path.startswith("//"):
         raise Problem("Invalid portal path")
-    headers = {}
+    headers = {"X-Alshival-Desktop-Features": "task-taxonomy-v1"}
     if token:
         headers["Authorization"] = "Bearer " + token
     data = None
@@ -86,6 +86,17 @@ def merge(base, local, shared):
 
 def encode_data(store, connection, data):
     data = {k: v for k, v in data.items() if k not in ("position", "resource_id")}
+    connection_row = store.db.execute("SELECT capabilities FROM connections WHERE id=?", (connection,)).fetchone()
+    supports_taxonomy = connection_row and "task-taxonomy-v1" in json.loads(connection_row[0]).get("features", [])
+    if not supports_taxonomy:
+        if data.get("type_id") or data.get("label_ids"):
+            raise Problem("Portal must support task types and labels before syncing these changes", 409)
+        data.pop("type_id", None)
+        data.pop("label_ids", None)
+    elif data.get("type_id") is None:
+        data.pop("type_id", None)
+        if not data.get("label_ids"):
+            data.pop("label_ids", None)
     for field in ("board_id", "parent_id", "status_id"):
         if data.get(field):
             row = store.db.execute(
@@ -502,6 +513,7 @@ def sync_connection(store, c, transport=remote, token=None):
     seen = set()
     cursor = ""
     statuses = []
+    types, labels, taxonomy_revision = [], [], None
     edges = []
     status_revision = None
     members = []
@@ -542,6 +554,9 @@ def sync_connection(store, c, transport=remote, token=None):
             removed.setdefault(collection, []).extend(ids)
         next_checkpoint = page.get("cursor", next_checkpoint)
         records.extend(page["items"])
+        types.extend(page.get("types", []))
+        labels.extend(page.get("labels", []))
+        taxonomy_revision = page.get("taxonomy_revision", taxonomy_revision)
         attachments.extend(page.get("attachments", []))
         status_revisions.update(page.get("status_revisions", {}))
         default_board = page.get("default_board_id", default_board)
@@ -560,6 +575,14 @@ def sync_connection(store, c, transport=remote, token=None):
     remote_by_id = {r["id"]: r for r in records}
     with store.tx():
         check_authorization()
+        if taxonomy_revision is not None:
+            from .taxonomy import receive
+            receive(store, c["id"], types, labels, taxonomy_revision)
+            # Discovery can predate a portal upgrade; a taxonomy snapshot proves support.
+            capabilities = json.loads(c["capabilities"])
+            if "task-taxonomy-v1" not in capabilities.get("features", []):
+                capabilities.setdefault("features", []).append("task-taxonomy-v1")
+                store.db.execute("UPDATE connections SET capabilities=? WHERE id=?", (json.dumps(capabilities), c["id"]))
         if v2:
             for row in store.db.execute(
                 "SELECT id,remote_id FROM items WHERE connection=? AND remote_id IS NOT NULL", (c["id"],)
@@ -733,6 +756,12 @@ def sync_connection(store, c, transport=remote, token=None):
         store.set_setting("attachment_queue:" + c["id"], list(queued_files.values()))
     for job in pending:
         with store.lock:
+            current_job = store.db.execute("SELECT state FROM outbox WHERE id=?", (job['id'],)).fetchone()
+            if not current_job or current_job['state'] != 'queued':
+                continue
+            if store.db.execute("SELECT 1 FROM outbox WHERE connection=? AND state IN ('draft','conflict') AND json_extract(payload,'$.operation')='project_taxonomy_write'", (c['id'],)).fetchone():
+                break
+        with store.lock:
             blocked = store.db.execute(
                 "SELECT 1 FROM outbox WHERE item_id=? AND state IN ('conflict','draft') AND json_extract(payload,'$.operation') IS NULL",
                 (job["item_id"],),
@@ -743,6 +772,30 @@ def sync_connection(store, c, transport=remote, token=None):
             if adapter.connection(c["id"])["state"] != "connected":
                 return
         payload = json.loads(job["payload"])
+        if payload.get("operation") == "project_taxonomy_write":
+            try:
+                result = send_job(store, c, prefix, token, transport, job, "project_taxonomy_write", payload["arguments"])
+                with store.tx():
+                    check_authorization()
+                    store.db.execute("UPDATE outbox SET state='sent' WHERE id=?", (job["id"],))
+                    # Advance only queued descendants of this successful local edit.
+                    for later in store.db.execute("SELECT id,payload FROM outbox WHERE connection=? AND state='queued' AND json_extract(payload,'$.operation')='project_taxonomy_write'", (c["id"],)).fetchall():
+                        value = json.loads(later['payload'])
+                        value['arguments']['revision'] = result['revision']
+                        store.db.execute("UPDATE outbox SET payload=? WHERE id=?", (json.dumps(value), later['id']))
+                        for pending_job in pending:
+                            if pending_job['id'] == later['id']:
+                                pending_job['payload'] = json.dumps(value)
+                    from .taxonomy import receive
+                    receive(store, c["id"], result['types'], result['labels'], result['revision'])
+            except Problem as error:
+                if error.status not in (400, 401, 403, 409):
+                    raise
+                with store.tx():
+                    check_authorization()
+                    store.db.execute("UPDATE outbox SET state='draft',reason='Types or labels changed; review workspace settings' WHERE connection=? AND state='queued' AND json_extract(payload,'$.operation')='project_taxonomy_write'", (c["id"],))
+                break
+            continue
         if payload.get("operation") == "project_status_write":
             try:
                 result = send_job(
@@ -917,6 +970,21 @@ def sync_connection(store, c, transport=remote, token=None):
                     (job["id"],),
                 )
             continue
+        with store.lock:
+            latest_taxonomy = store.setting('taxonomy_latest:' + c['id'])
+        if local['kind'] == 'task' and latest_taxonomy:
+            known_types = {r['id']: r for r in latest_taxonomy['types']}
+            known_labels = {r['id']: r for r in latest_taxonomy['labels']}
+            chosen = local_data.get('type_id')
+            invalid = chosen and chosen != shared['data'].get('type_id') and (chosen not in known_types or known_types[chosen]['archived'])
+            invalid = invalid or any(value not in shared['data'].get('label_ids', []) and (value not in known_labels or known_labels[value]['archived']) for value in local_data.get('label_ids', []))
+            if invalid:
+                with store.tx():
+                    check_authorization()
+                    store.db.execute("INSERT INTO conflicts VALUES(?,?,?,?,?,?,0)",
+                        (uid(), c['id'], job['item_id'], json.dumps(base), json.dumps(local), json.dumps(shared)))
+                    store.db.execute("UPDATE outbox SET state='conflict',reason='Type or label archived; review task classification' WHERE id=?", (job['id'],))
+                continue
         with store.lock:
             inflight = store.setting("request:" + job["id"])
         if inflight:

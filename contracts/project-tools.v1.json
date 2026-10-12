@@ -31,6 +31,24 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 100
+          },
+          "type_ids": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "label_ids": {
+            "type": "array",
+            "maxItems": 100,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         },
         "required": [],
@@ -439,6 +457,19 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              "type_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "label_ids": {
+                "type": "array",
+                "maxItems": 100,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
               }
             }
           }
@@ -766,6 +797,19 @@
                   }
                 },
                 "additionalProperties": false
+              },
+              "type_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "label_ids": {
+                "type": "array",
+                "maxItems": 100,
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                }
               }
             }
           }
@@ -1693,6 +1737,143 @@
           "workspaces"
         ],
         "additionalProperties": false
+      }
+    },
+    {
+      "name": "project_taxonomy",
+      "description": "Read workspace task types and labels, including archived values needed to display existing assignments.",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "types",
+          "labels",
+          "revision"
+        ]
+      }
+    },
+    {
+      "name": "project_taxonomy_write",
+      "description": "Manage workspace task types and labels using the current catalogue revision. Requires workspace management permission. Labels are created here, never inline on tasks.",
+      "readOnly": false,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "type",
+              "label"
+            ]
+          },
+          "operation": {
+            "enum": [
+              "create",
+              "update",
+              "archive",
+              "default",
+              "reorder"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "icon": {
+            "enum": [
+              "task",
+              "bug",
+              "story",
+              "improvement",
+              "research",
+              "design",
+              "support",
+              "maintenance"
+            ]
+          },
+          "order": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        },
+        "required": [
+          "idempotency_key",
+          "revision",
+          "kind",
+          "operation"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "types": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "types",
+          "labels",
+          "revision"
+        ]
       }
     }
   ],

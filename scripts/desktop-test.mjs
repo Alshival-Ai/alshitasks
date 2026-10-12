@@ -22,7 +22,7 @@ try {
   const errors = [];
   page.on("dialog", async (dialog) => {
     console.log("Fixture dialog:", dialog.message());
-    await dialog.accept();
+    await dialog.accept().catch(error=>{if(!error.message.includes("No dialog is showing"))throw error;});
   });
   page.on("pageerror", (e) => errors.push(e.message));
   assert.equal(
@@ -117,6 +117,13 @@ try {
     .getByRole("button", { name: "Maximize window", exact: true })
     .waitFor();
   } else console.log('Skipping native maximize/restore: fixture has no window manager.');
+  await page.getByRole("button", {name:"Settings for Local workspace",exact:true}).first().click();
+  const taxonomyDialog=page.getByRole("dialog");
+  await taxonomyDialog.getByRole("textbox", {name:"New label",exact:true}).fill("Backend");
+  await taxonomyDialog.getByRole("button", {name:"Add label",exact:true}).click();
+  await taxonomyDialog.getByRole("textbox", {name:"Label name",exact:true}).waitFor();
+  assert.equal(await taxonomyDialog.getByRole("textbox", {name:"Label name",exact:true}).inputValue(),"Backend");
+  await taxonomyDialog.getByRole("button", {name:"Close",exact:true}).click();
   await page.getByRole("button", { name: /New task/ }).click();
   await page
     .getByLabel("Title", { exact: true })
@@ -124,6 +131,8 @@ try {
   await page
     .getByLabel("Description", { exact: true })
     .fill("Created through the packaged desktop without a portal account");
+  await page.getByLabel("Type", {exact:true}).selectOption({label:"Bug"});
+  await page.getByRole("checkbox", {name:"Backend",exact:true}).check();
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await page
     .getByRole("heading", { name: "Offline acceptance task", exact: true })
@@ -134,6 +143,9 @@ try {
   );
   assert.equal(result.items.filter((x) => x.kind === "task").length, 1);
   assert.equal(result.items[0].data.title, "Offline acceptance task");
+  const taxonomy=await page.evaluate(()=>window.tasks.request("/v1/projects/taxonomy"));
+  assert.equal(result.items[0].data.type_id,taxonomy.types.find(t=>t.name==="Bug").id);
+  assert.deepEqual(result.items[0].data.label_ids,[taxonomy.labels.find(l=>l.name==="Backend").id]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "New Note", exact: true }).click();
   await page

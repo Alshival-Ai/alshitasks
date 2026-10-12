@@ -1,3 +1,4 @@
+import { TaxonomySettings } from "./project-board/Taxonomy";
 import { WorkspaceBoards } from "./WorkspaceBoards";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./project-board/portal/workspace-directory.css";
@@ -53,16 +54,50 @@ export function workspaceSettings(workspace: Workspace) {
     void window.tasks.external(target.href);
 }
 export function WorkspaceCog({ workspace }: { workspace: Workspace }) {
-  return workspace.settings_url && workspace.state === "connected" ? (
-    <button
-      className="wd-cog"
-      title="Workspace settings"
-      aria-label={`Settings for ${workspace.name}`}
-      onClick={() => workspaceSettings(workspace)}
-    >
-      &#9881;
-    </button>
-  ) : null;
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        className="wd-cog"
+        title="Workspace settings"
+        aria-label={`Settings for ${workspace.name}`}
+        onClick={() => {
+          setOpen(true);
+          dialog.current?.showModal();
+        }}
+      >
+        ⚙
+      </button>
+      <dialog
+        ref={dialog}
+        className="taxonomy-dialog"
+        onClose={() => setOpen(false)}
+      >
+        <header>
+          <h2>{workspace.name} settings</h2>
+          <button
+            className="button btn-frost"
+            onClick={() => dialog.current?.close()}
+          >
+            Close
+          </button>
+        </header>
+        <p>Types and labels are shared by every board in this workspace.</p>
+        {open && <TaxonomySettings workspace={workspace.id} />}
+        {workspace.settings_url && (
+          <p>
+            <button
+              className="button btn-frost"
+              onClick={() => workspaceSettings(workspace)}
+            >
+              Other portal settings
+            </button>
+          </p>
+        )}
+      </dialog>
+    </>
+  );
 }
 export function useDismiss(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null);
@@ -110,7 +145,7 @@ export function WorkspaceList({
     [limit, setLimit] = useState(50);
   const matches = filtered(rows, query);
   const visible = matches.slice(0, limit);
-  const selected = matches.find(w => w.id === current);
+  const selected = matches.find((w) => w.id === current);
   if (selected && !visible.includes(selected)) visible.unshift(selected);
   return (
     <>
@@ -128,17 +163,20 @@ export function WorkspaceList({
       </label>
       <nav className="wd-nav-list" aria-label="Workspaces">
         {visible.map((w) => (
-          <div className="wd-workspace-group" key={w.id}><button
-            aria-label={w.name}
-            title={w.name}
-            aria-current={w.id === current ? "page" : undefined}
-            onClick={() => select(w.id)}
-          >
-            <span className="wd-avatar" aria-hidden="true">
-              {w.name.slice(0, 1)}
-            </span>
-            <span className="nav-label">{w.name}</span>
-          </button>{w.id === current && children}</div>
+          <div className="wd-workspace-group" key={w.id}>
+            <button
+              aria-label={w.name}
+              title={w.name}
+              aria-current={w.id === current ? "page" : undefined}
+              onClick={() => select(w.id)}
+            >
+              <span className="wd-avatar" aria-hidden="true">
+                {w.name.slice(0, 1)}
+              </span>
+              <span className="nav-label">{w.name}</span>
+            </button>
+            {w.id === current && children}
+          </div>
         ))}
       </nav>
       {!matches.length && <p role="status">No workspaces match your search.</p>}
@@ -294,9 +332,7 @@ export function WorkspaceDirectory({
                   ? "Internal workspace"
                   : "Client workspace"}
             </p>
-            {w.id === current && (
-              <span className="wd-badge">Current</span>
-            )}
+            {w.id === current && <span className="wd-badge">Current</span>}
             {typeof w.unread === "number" && w.unread > 0 && (
               <span className="wd-badge">{w.unread} unread</span>
             )}
@@ -315,11 +351,19 @@ export function WorkspaceDirectory({
         <p className="wd-empty">No workspaces match your search.</p>
       )}
       <nav className="wd-pagination" aria-label="Workspace pages">
-        <button className="wd-page-link" disabled={actual === 1} onClick={() => setPage(actual - 1)}>
+        <button
+          className="wd-page-link"
+          disabled={actual === 1}
+          onClick={() => setPage(actual - 1)}
+        >
           Previous
         </button>
         <span>Page {actual}</span>
-        <button className="wd-page-link" disabled={actual === pages} onClick={() => setPage(actual + 1)}>
+        <button
+          className="wd-page-link"
+          disabled={actual === pages}
+          onClick={() => setPage(actual + 1)}
+        >
           Next
         </button>
       </nav>

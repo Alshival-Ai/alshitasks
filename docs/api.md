@@ -30,7 +30,7 @@ Remote collectors need an operator-managed authenticated reverse proxy or SSH tu
 
 Owner-only Unix socket operations include settings, credential/grant management, attachments, backups, SSH aliases, monitoring configuration, forwarding, and portal connections. No HTTP grant can invoke these.
 
-`alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The extracted 13-tool project contract is in `contracts/project-tools.v1.json`; log, health and notification queries add read-only tools. Default access is read-only; explicit write grants are stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
+`alshitasks mcp` implements newline JSON-RPC stdio with initialize, ping, tools/list and tools/call. The shared project contract is in `contracts/project-tools.v1.json`; log, health and notification queries add read-only tools. Default access is read-only; explicit write grants are stored in Secret Service with `alshitasks grant`. SSH resource metadata never adds a command-execution capability.
 
 Connected resource logs: `GET /v1/portal/logs?resource_id=LOCAL_UUID` uses the signed-in user’s live permissions and maps the cached resource ID. `GET /v1/portal/monitoring?resource_id=LOCAL_UUID` reads permitted portal health metadata. These are desktop-owner operations and fail offline rather than borrowing a managed principal.
 
@@ -165,3 +165,26 @@ Existing manually connected users must reconnect to consent to these scopes. Man
 account credentials gain them when their enrollment refreshes. Portal checks and
 email/SMS remain governed by portal settings. Local alerts never generate email/SMS
 or upload themselves to the portal. Both sources remain explicitly labeled in the UI.
+
+## Task types and labels
+
+`GET /v1/projects/taxonomy?workspace_id=WORKSPACE_ID` reads the workspace catalogue.
+`POST` at that path accepts the `project_taxonomy_write` arguments: `kind` (`type` or
+`label`), `operation` (`create`, `update`, `archive`, `default`, `reorder`), current
+catalogue `revision`, and an `idempotency_key`. Supply `name`, `icon`, `id`, or
+`order` as appropriate. The local MCP exposes `project_taxonomy` and
+`project_taxonomy_write`. Writes require a project write grant; connected workspace
+catalogues additionally require workspace management permission.
+
+Tasks accept one `type_id` and a list of `label_ids`. Omitted fields preserve the
+current selection; `label_ids: []` clears labels. Labels are created in workspace
+settings. Archived choices remain visible on existing tasks but cannot be newly
+assigned. `project_list` accepts `type_ids` and `label_ids` arrays; the local items
+HTTP endpoint accepts comma-separated values. Each filter matches any selected
+value, and the two filters combine with AND before pagination.
+
+The portal negotiates `task-taxonomy-v1` via `X-Alshival-Desktop-Features`.
+Catalogue snapshots precede tasks. Offline catalogue changes use revisioned outbox
+operations. Concurrent catalogue edits require review in workspace settings;
+conflicting task edits retain the existing field review. Old portal connections
+retain their existing behavior until the capability is available.

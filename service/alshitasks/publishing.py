@@ -93,7 +93,18 @@ def start(store, body):
     if sum(a["size"] for a in attachments) > 100 * 1024**2:
         raise Problem("Board attachments exceed the 100 MiB publication limit", 413)
     ident = uid()
+    from .taxonomy import catalog
+    classifications = catalog(store, LOCAL)
+    supports_taxonomy = "task-taxonomy-v1" in caps.get("features", [])
+    if not supports_taxonomy:
+        default_id = next(row["id"] for row in classifications['types'] if row['icon'] == 'task')
+        if any(r['data'].get('label_ids') or r['data'].get('type_id') not in (None, default_id) for r in records):
+            raise Problem("Upgrade the portal before publishing custom task types or labels", 409)
+        for record in records:
+            record['data'].pop('type_id', None)
+            record['data'].pop('label_ids', None)
     manifest = {
+        **({"taxonomy": classifications} if supports_taxonomy else {}),
         "format": "alshitasks-board-v1",
         "items": records,
         "statuses": statuses,

@@ -52,7 +52,7 @@ await page.addInitScript(() => {
       data: { title: "Planning" },
     },
   ];
-  const task = {id:"task-one",kind:"task",revision:1,author_id:"member-one",data:{title:"Assignment fixture",board_id:"board-one",status_id:"todo",state:"todo",assignee:null,body:"",visibility:"team",priority:"normal",deleted:false,archived:false,checklist:[]}};
+  const task = {id:"task-one",kind:"task",revision:1,author_id:"member-one",data:{type_id:"bug",label_ids:["backend"],title:"Assignment fixture",board_id:"board-one",status_id:"todo",state:"todo",assignee:null,body:"",visibility:"team",priority:"normal",deleted:false,archived:false,checklist:[]}};
   window.calls = [];
   window.externalLinks = [];
   window.tasks = {
@@ -79,6 +79,7 @@ await page.addInitScript(() => {
         item.revision++;
         return item.id === "task-one" ? structuredClone(item) : { item };
       }
+      if (p.endsWith("/taxonomy")) return {types:[{id:"task",name:"Task",icon:"task",position:0,is_default:true,archived:false,revision:1},{id:"bug",name:"Bug",icon:"bug",position:1,is_default:false,archived:false,revision:1}],labels:[{id:"backend",name:"Backend",archived:false,revision:1}],revision:"fixture",can_manage:true};
       if (p.endsWith("/members")) return {members:[{id:"member-one",display_name:"Alex Rivera"},{id:"member-two",display_name:"Morgan Lee"}]};
       if (p.endsWith("/items")) return {items:url.searchParams.get("workspace_id")==="w0" ? [structuredClone(task)] : [],next:null};
       if (p === "/v1/workspaces") return { workspaces: rows };
@@ -233,7 +234,10 @@ try {
   await page
     .getByRole("button", { name: "Settings for Tracegrade", exact: true })
     .click();
+  await page.getByRole("dialog").getByRole("heading", {name:"Task types",exact:true}).waitFor();
+  await page.getByRole("button", {name:"Other portal settings",exact:true}).click();
   assert.equal((await page.evaluate(() => window.externalLinks)).length, 1);
+  await page.getByRole("dialog").getByRole("button", {name:"Close",exact:true}).click();
   await page.screenshot({
     path: join(artifacts, "workspace-board-desktop.png"),
   });

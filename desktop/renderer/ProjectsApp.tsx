@@ -1,3 +1,9 @@
+import {
+  TaxonomyFilter,
+  TaxonomyFields,
+  emptyTaxonomy,
+  type Taxonomy,
+} from "./project-board/Taxonomy";
 import { WorkspaceCog, type Workspace } from "./Workspaces";
 import { Attachments } from "./project-board/Attachments";
 import { StickerPicker } from "./project-board/ResourceSticker";
@@ -58,6 +64,9 @@ export function ProjectsApp({
   const canCreateTask =
     canWrite || !!workspaceSettings?.scopes?.includes("tasks:write");
   const api = useMemo(() => workspaceApi(workspaceId), [workspaceId]);
+  const [taxonomy, setTaxonomy] = useState<Taxonomy>(emptyTaxonomy);
+  const [typeFilter, setTypeFilter] = useState<string[]>([]),
+    [labelFilter, setLabelFilter] = useState<string[]>([]);
   const [items, setItems] = useState<Item[]>([]),
     [boards, setBoards] = useState<Item[]>([]),
     [statuses, setStatuses] = useState<Status[]>([]),
@@ -116,13 +125,16 @@ export function ProjectsApp({
       all.push(...page.items);
       after = page.next ?? "";
     } while (after);
-    const [links, catalog, boardList, people] = await Promise.all([
-      api<{ edges: Edge[] }>("/edges"),
-      api<{ statuses: Status[]; can_manage: boolean }>("/statuses"),
-      api<{ boards: Item[] }>("/boards"),
-      api<{ members: Member[]; actor?: { id: string } }>("/members"),
-    ]);
+    const [links, catalog, boardList, people, taxonomyCatalog] =
+      await Promise.all([
+        api<{ edges: Edge[] }>("/edges"),
+        api<{ statuses: Status[]; can_manage: boolean }>("/statuses"),
+        api<{ boards: Item[] }>("/boards"),
+        api<{ members: Member[]; actor?: { id: string } }>("/members"),
+        api<Taxonomy>("/taxonomy"),
+      ]);
     if (alive.current && request === serial.current) {
+      setTaxonomy(taxonomyCatalog);
       setItems(all);
       setEdges(links.edges ?? []);
       setStatuses(catalog.statuses ?? []);
@@ -325,6 +337,7 @@ export function ProjectsApp({
         ].includes(name)
           ? value || null
           : value;
+    if (kind === "task") data.label_ids = fields.getAll("label_ids");
     data.board_id = selected?.data.board_id ?? (activeBoard || null);
     if (kind === "resource")
       data.resource = {
@@ -428,6 +441,9 @@ export function ProjectsApp({
     tasks = activeItems.filter((item) => item.kind === "task");
   const visibleTasks = tasks.filter(
     (item) =>
+      (!typeFilter.length || typeFilter.includes(item.data.type_id ?? "")) &&
+      (!labelFilter.length ||
+        labelFilter.some((id) => item.data.label_ids?.includes(id))) &&
       (!query ||
         `${item.data.title} ${item.data.body}`
           .toLowerCase()
@@ -592,6 +608,18 @@ export function ProjectsApp({
                       <option value="unassigned">Unassigned</option>
                     </select>
                   </label>
+                  <TaxonomyFilter
+                    title="Types"
+                    options={taxonomy.types}
+                    selected={typeFilter}
+                    change={setTypeFilter}
+                  />
+                  <TaxonomyFilter
+                    title="Labels"
+                    options={taxonomy.labels}
+                    selected={labelFilter}
+                    change={setLabelFilter}
+                  />
                   <label>
                     <span className="sr-only">Archive filter</span>
                     <select
@@ -608,6 +636,7 @@ export function ProjectsApp({
                   </label>
                 </div>
                 <TaskColumns
+                  taxonomy={taxonomy}
                   key={activeBoard}
                   tasks={visibleTasks}
                   statuses={boardStatuses}
@@ -957,6 +986,13 @@ export function ProjectsApp({
                       ))}
                     </select>
                   </label>
+                )}
+                {kind === "task" && taxonomy.types.length > 0 && (
+                  <TaxonomyFields
+                    catalog={taxonomy}
+                    type={selected?.data.type_id}
+                    labels={selected?.data.label_ids}
+                  />
                 )}
                 <label>
                   Priority

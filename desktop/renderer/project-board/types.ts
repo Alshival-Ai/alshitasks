@@ -9,6 +9,8 @@ export type Resource = {
   external_id: string | null;
 };
 export type ItemData = {
+  type_id?: string | null;
+  label_ids?: string[];
   title: string;
   body: string;
   status_id: string | null;
