@@ -1,3 +1,4 @@
+import { TaskGraph } from "./project-board/TaskGraph";
 import {
   TaxonomyFilter,
   TaxonomyFields,
@@ -713,7 +714,7 @@ export function ProjectsApp({
               />
             )}
             {view === "graph" && (
-              <TaskGraph tasks={tasks} edges={edges} open={open} />
+              <TaskGraph key={activeBoard} tasks={tasks} edges={edges} statuses={boardStatuses} open={open} />
             )}
             {view === "deliverables" && (
               <div className="sp-delivery-grid">
@@ -1619,166 +1620,5 @@ function StatusEditor({
         <button type="submit">Save status</button>
       </form>
     </>
-  );
-}
-
-function TaskGraph({
-  tasks,
-  edges,
-  open,
-}: {
-  tasks: Item[];
-  edges: Edge[];
-  open: (task: Item) => void;
-}) {
-  const [zoom, setZoom] = useState(1);
-  const [focus, setFocus] = useState<string | null>(null);
-  const columns = Math.min(4, Math.max(1, tasks.length));
-  const points = new Map(
-    tasks.map((task, index) => [
-      task.id,
-      {
-        x: 30 + (index % columns) * 280,
-        y: 40 + Math.floor(index / columns) * 150,
-      },
-    ]),
-  );
-  const width = columns * 280 + 20,
-    height = Math.max(240, Math.ceil(tasks.length / columns) * 150 + 40);
-  return (
-    <section className="projects-graph-surface">
-      <div className="projects-actions">
-        <button
-          onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
-          aria-label="Zoom out"
-        >
-          −
-        </button>
-        <span>{Math.round(zoom * 100)}%</span>
-        <button
-          onClick={() => setZoom((value) => Math.min(2, value + 0.25))}
-          aria-label="Zoom in"
-        >
-          +
-        </button>
-      </div>
-      {!tasks.length ? (
-        <p>Add a task to start the graph.</p>
-      ) : (
-        <div className="projects-graph-scroll">
-          <svg
-            width={width * zoom}
-            height={height * zoom}
-            viewBox={`0 0 ${width} ${height}`}
-            role="group"
-            aria-label="Task graph"
-          >
-            <defs>
-              <marker
-                id="project-dependency-arrow"
-                markerWidth="8"
-                markerHeight="8"
-                refX="7"
-                refY="4"
-                orient="auto"
-              >
-                <path d="M0,0 L8,4 L0,8 Z" fill="currentColor" />
-              </marker>
-            </defs>
-            {edges.map((edge) => {
-              const a = points.get(edge.source_id),
-                b = points.get(edge.target_id);
-              if (!a || !b) return null;
-              return (
-                <path
-                  key={edge.id}
-                  d={`M${a.x + 110},${a.y + 80} C${a.x + 110},${a.y + 115} ${b.x + 110},${b.y - 35} ${b.x + 110},${b.y}`}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={
-                    focus && [edge.source_id, edge.target_id].includes(focus)
-                      ? 3
-                      : 1.5
-                  }
-                  opacity={
-                    !focus || [edge.source_id, edge.target_id].includes(focus)
-                      ? 0.8
-                      : 0.15
-                  }
-                  strokeDasharray={edge.kind === "related" ? "5 4" : undefined}
-                  markerEnd={
-                    edge.kind === "depends_on"
-                      ? "url(#project-dependency-arrow)"
-                      : undefined
-                  }
-                >
-                  <title>
-                    {
-                      tasks.find((task) => task.id === edge.source_id)?.data
-                        .title
-                    }{" "}
-                    {edge.kind === "depends_on"
-                      ? "depends on"
-                      : "is related to"}{" "}
-                    {
-                      tasks.find((task) => task.id === edge.target_id)?.data
-                        .title
-                    }
-                  </title>
-                </path>
-              );
-            })}
-            {tasks.map((task) => {
-              const point = points.get(task.id)!;
-              return (
-                <g
-                  key={task.id}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open task: ${task.data.title}`}
-                  className="projects-graph-task"
-                  onFocus={() => setFocus(task.id)}
-                  onBlur={() => setFocus(null)}
-                  onMouseEnter={() => setFocus(task.id)}
-                  onMouseLeave={() => setFocus(null)}
-                  onClick={() => open(task)}
-                  onKeyDown={(event) => {
-                    if (["Enter", " "].includes(event.key)) {
-                      event.preventDefault();
-                      open(task);
-                    }
-                  }}
-                >
-                  <rect
-                    x={point.x}
-                    y={point.y}
-                    width={220}
-                    height={80}
-                    rx={12}
-                  />
-                  <text x={point.x + 12} y={point.y + 28}>
-                    {task.data.title.length > 25
-                      ? task.data.title.slice(0, 24) + "…"
-                      : task.data.title}
-                  </text>
-                  <text
-                    className="graph-state"
-                    x={point.x + 12}
-                    y={point.y + 56}
-                  >
-                    {labels[task.data.state]}
-                  </text>
-                  <title>{task.data.title}</title>
-                </g>
-              );
-            })}
-          </svg>
-        </div>
-      )}
-      <p>
-        Arrows point to dependencies. Dashed lines connect related tasks. Select
-        a task to edit it.
-      </p>
-    </section>
   );
 }

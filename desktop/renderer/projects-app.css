@@ -244,32 +244,6 @@
   font-size: 18px;
   margin-top: 24px;
 }
-.projects-app .projects-graph-scroll {
-  overflow: auto;
-  max-height: 65vh;
-  color: var(--matrix-color-b);
-}
-.projects-app .projects-graph-task {
-  cursor: pointer;
-  outline: none;
-}
-.projects-app .projects-graph-task rect {
-  fill: var(--paper);
-  stroke: var(--line);
-}
-.projects-app .projects-graph-task:focus rect,
-.projects-app .projects-graph-task:hover rect {
-  stroke: var(--matrix-color-b);
-  stroke-width: 3;
-}
-.projects-app .projects-graph-task text {
-  fill: var(--ink);
-  font-size: 14px;
-}
-.projects-app .projects-graph-task .graph-state {
-  font-size: 12px;
-  opacity: 0.7;
-}
 .project-drag-ghost {
   padding: 16px;
   max-width: 220px;

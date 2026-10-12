@@ -53,6 +53,12 @@ await page.addInitScript(() => {
     },
   ];
   const task = {number:17,id:"task-one",kind:"task",revision:1,author_id:"member-one",data:{type_id:"bug",label_ids:["backend"],title:"Assignment fixture",board_id:"board-one",status_id:"todo",state:"todo",assignee:null,body:"",visibility:"team",priority:"normal",deleted:false,archived:false,checklist:[]}};
+  const dependent = {...structuredClone(task), id:"task-two",number:18,data:{...structuredClone(task.data),title:"Ship release",status_id:"doing",state:"doing"}};
+  const relatedTask = {...structuredClone(task),id:"task-three",number:19,data:{...structuredClone(task.data),title:"Release notes",status_id:"done",state:"done"}};
+  const isolatedTask = {...structuredClone(task),id:"task-four",number:20,data:{...structuredClone(task.data),title:"Independent task"}};
+  const graphEdges = [{id:"dependency",source_id:"task-two",target_id:"task-one",kind:"depends_on"},{id:"related",source_id:"task-two",target_id:"task-three",kind:"related"}];
+  const changeListeners = new Set();
+  window.completeGraphPrerequisite = () => { task.data.status_id="done"; task.data.state="done"; task.revision++; changeListeners.forEach(fn=>fn()); };
   window.calls = [];
   window.externalLinks = [];
   window.tasks = {
@@ -81,7 +87,8 @@ await page.addInitScript(() => {
       }
       if (p.endsWith("/taxonomy")) return {types:[{id:"task",name:"Task",icon:"task",position:0,is_default:true,archived:false,revision:1},{id:"bug",name:"Bug",icon:"bug",position:1,is_default:false,archived:false,revision:1}],labels:[{id:"backend",name:"Backend",archived:false,revision:1}],revision:"fixture",can_manage:true};
       if (p.endsWith("/members")) return {members:[{id:"member-one",display_name:"Alex Rivera"},{id:"member-two",display_name:"Morgan Lee"}]};
-      if (p.endsWith("/items")) return {items:url.searchParams.get("workspace_id")==="w0" ? [structuredClone(task)] : [],next:null};
+      if (p.endsWith("/edges")) return {edges:graphEdges};
+      if (p.endsWith("/items")) return {items:url.searchParams.get("workspace_id")==="w0" ? [task,dependent,relatedTask,isolatedTask].map(t=>structuredClone(t)) : [],next:null};
       if (p === "/v1/workspaces") return { workspaces: rows };
       if (p === "/v1/portal/account")
         return {
@@ -123,7 +130,7 @@ await page.addInitScript(() => {
         publications: [],
       };
     },
-    onChanged: () => () => {},
+    onChanged: (fn) => { changeListeners.add(fn); return () => changeListeners.delete(fn); },
     onWindowState: () => () => {},
     onNotification: () => () => {},
     initialNotification: async () => null,
@@ -242,7 +249,7 @@ try {
   await page.screenshot({
     path: join(artifacts, "workspace-board-desktop.png"),
   });
-  assert.equal(await page.locator('.sp-card-kind').textContent(), 'Task #17');
+  assert.equal(await page.locator('.sp-card-kind').first().textContent(), 'Task #17');
   await page.getByRole('button', {name:'Assignment fixture',exact:true}).click();
   assert.equal(await page.locator('.task-detail-header .sp-eyebrow').textContent(), 'Task #17');
   await page.getByRole('button', {name:'Close item',exact:true}).click();
@@ -285,6 +292,71 @@ try {
   await page.keyboard.press('Escape');
   await page.setViewportSize({width:1440,height:1000});
   await page.emulateMedia({colorScheme:'light'});
+  await page.getByRole('button',{name:'Reload board',exact:true}).click();
+  await page.locator('.sp-error').waitFor({state:'hidden'});
+  await page.getByRole('link',{name:'Graph',exact:true}).click();
+  const graph = page.getByRole('group',{name:'Task network graph',exact:true});
+  await graph.waitFor();
+  assert.equal(await graph.locator('.task-network-node').count(),4);
+  assert.equal(await graph.locator('.task-network-edge.depends_on path').count(),1);
+  assert.equal(await graph.locator('.task-network-edge.related path').getAttribute('marker-end'),null);
+  assert.equal(await graph.locator('.is-blocking path').evaluate(e=>getComputedStyle(e).stroke),'rgb(227, 73, 73)');
+  // The stored dependent→prerequisite relation renders prerequisite→dependent.
+  const direction = await graph.evaluate(el=>{
+    const path=el.querySelector('.depends_on path'),nodes=[...el.querySelectorAll('.task-network-node')];
+    const a=nodes.find(n=>n.getAttribute('aria-label').startsWith('Task #17:')).transform.baseVal.getItem(0).matrix;
+    const b=nodes.find(n=>n.getAttribute('aria-label').startsWith('Task #18:')).transform.baseVal.getItem(0).matrix;
+    const start=path.getPointAtLength(0),end=path.getPointAtLength(path.getTotalLength());
+    return Math.hypot(start.x-a.e,start.y-a.f)<Math.hypot(start.x-b.e,start.y-b.f) && Math.hypot(end.x-b.e,end.y-b.f)<Math.hypot(end.x-a.e,end.y-a.f);
+  });
+  assert(direction);
+  await graph.getByRole('button',{name:'Task #18: Ship release, blocked',exact:true}).click();
+  const inspector=page.getByRole('complementary',{name:'Selected task relationships'});
+  await inspector.getByText('Blocked by',{exact:true}).waitFor();
+  await inspector.getByRole('button',{name:'Task #17 · Assignment fixture',exact:true}).click();
+  await inspector.getByText('Blocks',{exact:true}).waitFor();
+  await page.screenshot({path:join(artifacts,'graph-selected.png')});
+  await page.getByRole('button',{name:'Clear graph selection'}).click();
+  const node=graph.getByRole('button',{name:'Task #17: Assignment fixture',exact:true});
+  const oldPosition=await node.getAttribute('transform'),box=await node.boundingBox();
+  await page.mouse.move(box.x+box.width/2,box.y+30);await page.mouse.down();await page.mouse.move(box.x+box.width/2+80,box.y+60,{steps:6});await page.mouse.up();
+  assert.notEqual(await node.getAttribute('transform'),oldPosition);
+  await page.getByRole('button',{name:'Reset layout'}).click();
+  assert.equal(await node.getAttribute('transform'),oldPosition);
+  const canvasTransform=()=>graph.locator(':scope > g').getAttribute('transform');
+  const fitTransform=await canvasTransform();
+  await page.getByRole('button',{name:'Zoom in',exact:true}).click();
+  assert.notEqual(await canvasTransform(),fitTransform);
+  await page.getByRole('button',{name:'Fit graph',exact:true}).click();
+  assert.equal(await canvasTransform(),fitTransform);
+  const canvasBox=await graph.boundingBox();
+  await page.mouse.move(canvasBox.x+15,canvasBox.y+15);await page.mouse.down();await page.mouse.move(canvasBox.x+75,canvasBox.y+55,{steps:4});await page.mouse.up();
+  assert.notEqual(await canvasTransform(),fitTransform);
+  await page.getByRole('button',{name:'Fit graph',exact:true}).click();
+  await node.focus();await page.keyboard.press('Enter');await inspector.getByText('Blocks',{exact:true}).waitFor();
+  await page.keyboard.press('Escape');await inspector.waitFor({state:'hidden'});
+  await page.getByRole('checkbox',{name:'Connected tasks only'}).check();
+  assert.equal(await graph.locator('.task-network-node').count(),3);
+  await page.getByRole('checkbox',{name:'Related links'}).uncheck();
+  assert.equal(await graph.locator('.task-network-node').count(),2);
+  await page.getByRole('checkbox',{name:'Connected tasks only'}).uncheck();
+  await page.getByRole('checkbox',{name:'Related links'}).check();
+  await page.getByRole('searchbox',{name:'Find a task'}).fill('#18');
+  await page.getByText('1 matching tasks highlighted.',{exact:true}).waitFor();
+  await page.getByRole('searchbox',{name:'Find a task'}).clear();
+  await page.screenshot({path:join(artifacts,'graph-light.png')});
+  await page.emulateMedia({colorScheme:'dark'});
+  await page.screenshot({path:join(artifacts,'graph-dark.png')});
+  await page.setViewportSize({width:390,height:844});
+  assert(await graph.evaluate(e=>e.getBoundingClientRect().right<=390));
+  await page.screenshot({path:join(artifacts,'graph-mobile.png')});
+  await page.setViewportSize({width:1440,height:1000});
+  await page.emulateMedia({colorScheme:'light'});
+  await page.evaluate(()=>window.completeGraphPrerequisite());
+  await page.waitForFunction(()=>!document.querySelector('.task-network-edge.is-blocking'));
+  assert.equal(await node.getAttribute('transform'),oldPosition);
+  await graph.getByRole('button',{name:'Task #18: Ship release',exact:true}).waitFor();
+  await page.getByRole('link',{name:'Board',exact:true}).click();
   const rail = page.locator('.app-sidebar');
   await rail.getByRole('button',{name:'Neural Labs (opens in browser)',exact:true}).click();
   assert.equal((await page.evaluate(() => window.externalLinks)).at(-1),'https://alshival.ai/workspace/w0/neural-labs/');
@@ -328,7 +400,7 @@ try {
   await page.screenshot({ path: join(artifacts, "workspace-dark.png") });
   assert.deepEqual(errors, []);
   console.log(
-    "1000-workspace pagination, search, dismissal, title, settings destination and startup restoration passed.",
+    "Workspace UI and task network checks passed: dependency direction, red blockers, completion updates, selection, keyboard, drag, pan, zoom, filters and themes.",
   );
 } finally {
   await browser.close();
