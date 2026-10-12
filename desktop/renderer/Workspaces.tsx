@@ -135,11 +135,13 @@ export function WorkspaceList({
   current,
   select,
   children,
+  switcher = false,
 }: {
   rows: Workspace[];
   current: string;
   select: (id: string) => void;
   children?: ReactNode;
+  switcher?: boolean;
 }) {
   const [query, setQuery] = useState(""),
     [limit, setLimit] = useState(50);
@@ -149,40 +151,88 @@ export function WorkspaceList({
   if (selected && !visible.includes(selected)) visible.unshift(selected);
   return (
     <>
-      <label className="wd-nav-search">
-        <span className="sr-only">Find a workspace</span>
-        <input
-          type="search"
-          placeholder="Find a workspace"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setLimit(50);
-          }}
-        />
+      <label className={switcher ? "app-workspace-search" : "wd-nav-search"}>
+        <span className="app-workspace-sr-only">Find a workspace</span>
+        <div className={switcher ? "app-workspace-search-field" : undefined}>
+          {switcher && (
+            <svg
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <circle cx="8.5" cy="8.5" r="5.25" />
+              <path d="m12.5 12.5 4 4" />
+            </svg>
+          )}
+          <input
+            type="search"
+            placeholder="Find a workspace"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setLimit(50);
+            }}
+          />
+        </div>
       </label>
-      <nav className="wd-nav-list" aria-label="Workspaces">
+      <nav
+        className={switcher ? "app-workspace-options" : "wd-nav-list"}
+        aria-label="Workspaces"
+      >
         {visible.map((w) => (
           <div className="wd-workspace-group" key={w.id}>
             <button
+              className={switcher ? "app-workspace-option" : undefined}
               aria-label={w.name}
               title={w.name}
               aria-current={w.id === current ? "page" : undefined}
               onClick={() => select(w.id)}
             >
-              <span className="wd-avatar" aria-hidden="true">
+              <span
+                className={switcher ? "app-workspace-avatar" : "wd-avatar"}
+                aria-hidden="true"
+              >
                 {w.name.slice(0, 1)}
               </span>
-              <span className="nav-label">{w.name}</span>
+              <span
+                className={switcher ? "app-workspace-option-name" : "nav-label"}
+              >
+                {w.name}
+              </span>
+              {switcher && w.id === current && (
+                <svg
+                  className="app-workspace-check"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m4 10 4 4 8-8" />
+                </svg>
+              )}
             </button>
             {w.id === current && children}
           </div>
         ))}
       </nav>
-      {!matches.length && <p role="status">No workspaces match your search.</p>}
+      {!matches.length && (
+        <p className="app-workspace-empty" role="status">
+          No workspaces match your search.
+        </p>
+      )}
       {limit < matches.length && (
         <button
-          className="button btn-frost wd-more"
+          className={
+            switcher
+              ? "app-workspace-option app-workspace-more"
+              : "button btn-frost wd-more"
+          }
           onClick={() => setLimit(limit + 50)}
         >
           Load more
@@ -241,6 +291,7 @@ export function WorkspaceSwitcher({
         <div id="workspace-options" className="app-workspace-panel">
           <p className="app-workspace-heading">Workspaces</p>
           <WorkspaceList
+            switcher
             rows={rows}
             current={current}
             select={(id) => {
@@ -253,7 +304,7 @@ export function WorkspaceSwitcher({
               if (directory()) setOpen(false);
             }}
           >
-            All workspaces →
+            All workspaces <span aria-hidden="true">→</span>
           </button>
         </div>
       )}

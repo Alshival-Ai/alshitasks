@@ -304,3 +304,26 @@ td {
  body.native-workspaces .wd-header-menu .wd-menu-toggle{font-size:12px;padding:6px}
  body.native-workspaces .window-controls{display:none}
 }
+
+/* Native buttons and labels reuse the portal switcher presentation. */
+.app-workspace-switcher .app-workspace-search { display: block; margin: 0; }
+.app-workspace-switcher button.app-workspace-manage {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--app-line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.app-workspace-switcher button.app-workspace-manage:hover {
+  background: color-mix(in srgb, var(--app-ink) 6%, var(--app-card));
+}
+
+.app-workspace-switcher .app-workspace-more {
+  width: calc(100% - 16px);
+  margin: 0 8px 8px;
+  justify-content: center;
+  min-height: 36px;
+  color: var(--app-muted);
+}
