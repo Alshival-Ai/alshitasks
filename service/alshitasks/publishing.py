@@ -97,7 +97,7 @@ def start(store, body):
     classifications = catalog(store, LOCAL)
     supports_taxonomy = "task-taxonomy-v1" in caps.get("features", [])
     if not supports_taxonomy:
-        default_id = next(row["id"] for row in classifications['types'] if row['icon'] == 'task')
+        default_id = next((row["id"] for row in classifications['types'] if row['icon'] == 'task' and row['name'] == 'Task' and not row['archived']), None)
         if any(r['data'].get('label_ids') or r['data'].get('type_id') not in (None, default_id) for r in records):
             raise Problem("Upgrade the portal before publishing custom task types or labels", 409)
         for record in records:
