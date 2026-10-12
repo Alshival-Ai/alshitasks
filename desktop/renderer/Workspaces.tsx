@@ -22,6 +22,7 @@ export type Workspace = {
   };
   unread?: number;
   settings_url?: string;
+  neural_labs_url?: string;
   portal_origin?: string;
   scopes?: string[];
 };
@@ -98,14 +99,19 @@ export function WorkspaceList({
   rows,
   current,
   select,
+  children,
 }: {
   rows: Workspace[];
   current: string;
   select: (id: string) => void;
+  children?: ReactNode;
 }) {
   const [query, setQuery] = useState(""),
     [limit, setLimit] = useState(50);
   const matches = filtered(rows, query);
+  const visible = matches.slice(0, limit);
+  const selected = matches.find(w => w.id === current);
+  if (selected && !visible.includes(selected)) visible.unshift(selected);
   return (
     <>
       <label className="wd-nav-search">
@@ -121,9 +127,9 @@ export function WorkspaceList({
         />
       </label>
       <nav className="wd-nav-list" aria-label="Workspaces">
-        {matches.slice(0, limit).map((w) => (
-          <button
-            key={w.id}
+        {visible.map((w) => (
+          <div className="wd-workspace-group" key={w.id}><button
+            aria-label={w.name}
             title={w.name}
             aria-current={w.id === current ? "page" : undefined}
             onClick={() => select(w.id)}
@@ -132,7 +138,7 @@ export function WorkspaceList({
               {w.name.slice(0, 1)}
             </span>
             <span className="nav-label">{w.name}</span>
-          </button>
+          </button>{w.id === current && children}</div>
         ))}
       </nav>
       {!matches.length && <p role="status">No workspaces match your search.</p>}

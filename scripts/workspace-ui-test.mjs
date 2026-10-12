@@ -33,6 +33,7 @@ await page.addInitScript(() => {
       kind: i % 2 ? "customer" : "internal",
       sync: "up-to-date",
       settings_url: "/workspace/w" + i + "/settings/",
+      neural_labs_url: i === 0 ? "/workspace/w0/neural-labs/" : "",
       portal_origin: "https://alshival.ai",
       scopes: ["project:read", "project:write"],
     })),
@@ -186,13 +187,13 @@ try {
   });
   await page.waitForFunction(() =>
     document
-      .querySelector('.wd-board-navigation [aria-current="page"]')
+      .querySelector('.wd-board-children [aria-current="page"]')
       ?.textContent.includes("Planning"),
   );
   await boardNav.getByRole("button", { name: "Delivery", exact: true }).click();
   await page.waitForFunction(() =>
     document
-      .querySelector('.wd-board-navigation [aria-current="page"]')
+      .querySelector('.wd-board-children [aria-current="page"]')
       ?.textContent.includes("Delivery"),
   );
   assert.equal(
@@ -216,6 +217,28 @@ try {
   await page.screenshot({
     path: join(artifacts, "workspace-board-desktop.png"),
   });
+  const rail = page.locator('.app-sidebar');
+  await rail.getByRole('button',{name:'Neural Labs (opens in browser)',exact:true}).click();
+  assert.equal((await page.evaluate(() => window.externalLinks)).at(-1),'https://alshival.ai/workspace/w0/neural-labs/');
+  await rail.locator('[data-app-toggle]').click();
+  assert.equal(await rail.evaluate(e => Math.round(e.getBoundingClientRect().width)),72);
+  const avatar = rail.locator('.wd-avatar').first();
+  assert.equal(await avatar.evaluate(e => getComputedStyle(e).opacity),'1');
+  assert.equal(await rail.locator('.nav-label:visible').count(),0);
+  assert(await rail.locator('.wd-nav-list').evaluate(e => e.scrollWidth <= e.clientWidth));
+  await avatar.hover();
+  await page.getByRole('tooltip').waitFor();
+  assert.equal(await rail.locator('[data-app-toggle]').getAttribute('aria-expanded'),'false');
+  await page.screenshot({path:join(artifacts,'sidebar-collapsed-light.png')});
+  await rail.getByRole('button',{name:'Choose board',exact:true}).click();
+  await page.locator('#sidebar-boards').getByRole('button',{name:'Planning',exact:true}).click();
+  await page.locator('#sidebar-boards').waitFor({state:'hidden'});
+  await page.mouse.move(600,100);
+  await page.emulateMedia({colorScheme:'dark'});
+  await page.screenshot({path:join(artifacts,'sidebar-collapsed-dark.png')});
+  await rail.locator('[data-app-toggle]').click();
+  await page.screenshot({path:join(artifacts,'sidebar-expanded-dark.png')});
+  await page.emulateMedia({colorScheme:'light'});
   await page.getByRole("button", { name: "Account", exact: true }).click();
   await page.getByRole("button", { name: "Startup preferences" }).click();
   await page.locator(".wd-startup select").selectOption("last");
@@ -227,6 +250,12 @@ try {
   await page.screenshot({
     path: join(artifacts, "workspace-mobile-desktop.png"),
   });
+  await page.getByRole('button',{name:'Open navigation',exact:true}).click();
+  await page.getByRole('dialog',{name:'Alshival navigation'}).waitFor();
+  assert(await page.locator('.app-content').evaluate(e => e.inert));
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('.app-content').evaluate(e => e.inert),false);
+  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.emulateMedia({ colorScheme: "dark" });
   await page.screenshot({ path: join(artifacts, "workspace-dark.png") });
   assert.deepEqual(errors, []);

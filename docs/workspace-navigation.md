@@ -11,3 +11,9 @@ Startup defaults to the directory with multiple available workspaces, or the sol
 ## Validation
 
 Run `npm run build` and the Python tests. Serve `dist` on port 8383 and run `node scripts/workspace-ui-test.mjs` with Playwright Chromium installed, or set `BROWSER_PATH` to a local Chromium browser. `UI_BASE_URL` and `UI_ARTIFACTS` override the fixture URL and screenshot folder. The browser fixture covers 1,000 summaries, bounded rendering, search, dismissal, settings destinations, workspace headings and startup restoration. `scripts/startup-test.mjs` verifies the installed Linux package with an isolated test root.
+
+## Shared sidebar
+
+`sidebar.css`, `sidebar.js` and `sidebar-icons.svg` are vendored from the portal (see `docs/portal-shell-provenance.json`). They require no portal connection. Both products use a click-only 256px sidebar / 72px icon rail, always-visible workspace badges, one vertical scroll area, board choices nested under the active workspace and a fixed Neural Labs footer when discovery supplies an eligible destination. Single-board workspaces omit redundant board navigation; management stays on Workspaces. Mobile uses a drawer with focus trapping and Escape. Desktop expansion preferences are local and account-scoped.
+
+Browser validation also covers both themes, rail icon visibility, horizontal overflow, hover stability, board popovers, Neural Labs links and mobile dismissal.

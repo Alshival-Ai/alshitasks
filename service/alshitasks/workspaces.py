@@ -43,6 +43,7 @@ def catalog(store):
                 "portal_origin": r["origin"],
                 "portal_workspace_id": r["workspace"],
                 "settings_url": meta.get("settings_url", ""),
+                "neural_labs_url": meta.get("neural_labs_url", "") if r["state"] == "connected" else "",
                 "state": r["state"],
                 "scopes": meta.get("scopes", []),
                 "last_sync": r["cursor"],

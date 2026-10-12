@@ -62,7 +62,7 @@ class Workspaces(unittest.TestCase):
         self.assertEqual(self.s.setting('account_navigation'), [])
 
     def test_catalog_keeps_summary_metadata_and_local_identity(self):
-        self.remote[0].update(kind='internal', settings_url='/workspace/settings/', unread=3)
+        self.remote[0].update(kind='internal', settings_url='/workspace/settings/', unread=3, neural_labs_url='/workspace/labs/')
         self.discover()
         from alshitasks.workspaces import catalog
         rows = catalog(self.s)
@@ -70,6 +70,9 @@ class Workspaces(unittest.TestCase):
         remote = next(r for r in rows if r.get('portal_workspace_id') == self.remote[0]['id'])
         self.assertEqual((remote['kind'], remote['unread']), ('internal', 3))
         self.assertEqual(remote['settings_url'], '/workspace/settings/')
+        self.assertEqual(remote['neural_labs_url'], '/workspace/labs/')
+        self.s.db.execute("UPDATE connections SET state='disconnected'")
+        self.assertFalse(any(r.get('neural_labs_url') for r in catalog(self.s)))
 
     def create(self, workspace, title="Board"):
         with self.s.tx(), scope(self.s, workspace):

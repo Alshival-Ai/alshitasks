@@ -1,0 +1,50 @@
+/* Shared portal / standalone desktop navigation. */
+.alshival-app.app-portal { --app-rail:72px; --app-width:256px; }
+.alshival-app.app-portal .app-sidebar { padding:12px 10px; background:var(--app-card); border-right:1px solid var(--app-line); overflow:visible; gap:12px; }
+.alshival-app.app-portal .app-sidebar-controls { padding:0; height:40px; flex:none; align-items:center; justify-content:flex-start; }
+.alshival-app.app-portal .app-sidebar button[data-app-toggle] { width:40px; height:40px; margin:0 5px; border-radius:11px; background:var(--app-paper); color:var(--app-ink); box-shadow:inset 0 0 0 1px var(--app-line); }
+.alshival-app.app-portal .app-sidebar button[data-app-toggle]:hover { background:color-mix(in srgb,var(--app-ink) 9%,var(--app-paper)); }
+.alshival-app.app-portal .app-sidebar #app-menu { display:flex; flex-direction:column; min-height:0; overflow:visible; flex:1; gap:8px; }
+.alshival-app.app-portal .app-sidebar .wd-navigation { height:auto; max-height:none; flex:1; min-height:0; gap:4px; }
+.alshival-app.app-portal .app-sidebar .wd-directory-link,
+.alshival-app.app-portal .app-sidebar .wd-workspace-group > :is(a,button) { display:flex; align-items:center; gap:12px; width:100%; min-width:0; min-height:46px; padding:7px 9px; margin:0; box-sizing:border-box; border:0; border-radius:12px; background:transparent; color:var(--app-ink); text-decoration:none; font:inherit; font-size:14px; font-weight:550; text-align:left; cursor:pointer; position:relative; }
+.alshival-app.app-portal .app-sidebar .wd-directory-link { flex:none; padding:11px 15px; }
+.alshival-app.app-portal .app-sidebar .wd-nav-search { position:static; flex:none; padding:8px 0; }
+.alshival-app.app-portal .app-sidebar .wd-nav-search input { width:100%; height:38px; font-size:13px; box-sizing:border-box; background:var(--app-paper); }
+.alshival-app.app-portal .app-sidebar nav.wd-nav-list { display:flex; flex-direction:column; flex:1; min-height:0; max-height:none; overflow-y:auto; overflow-x:hidden; scrollbar-width:thin; scrollbar-color:color-mix(in srgb,var(--app-ink) 20%,transparent) transparent; gap:4px; padding:2px 0; margin:0; }
+.alshival-app.app-portal .app-sidebar .wd-workspace-group { flex:none; min-width:0; }
+.alshival-app.app-portal .app-sidebar .wd-avatar { width:32px; height:32px; flex:0 0 32px; border-radius:10px; opacity:1!important; visibility:visible!important; font-size:13px; color:var(--app-ink); background:color-mix(in srgb,#8c62d1 12%,var(--app-paper)); }
+.alshival-app.app-portal .app-sidebar .nav-icon { display:block; width:20px; height:20px; flex:0 0 20px; opacity:1!important; visibility:visible!important; }
+.alshival-app.app-portal .app-sidebar .nav-label { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:1; visibility:visible; }
+.alshival-app.app-portal:not(.app-menu-open) .app-sidebar .nav-label { display:none; }
+.alshival-app.app-portal .app-sidebar .wd-workspace-group > [aria-current=page],
+.alshival-app.app-portal .app-sidebar .wd-directory-link[aria-current=page] { background:color-mix(in srgb,#8c62d1 11%,var(--app-paper)); color:var(--app-ink); }
+.alshival-app.app-portal .app-sidebar .wd-workspace-group > [aria-current=page]::before { content:''; position:absolute; left:0; top:14px; bottom:14px; width:3px; border-radius:3px; background:linear-gradient(#4285ff,#a66ce8); opacity:1; animation:none; z-index:0; }
+.alshival-app.app-portal .app-sidebar .wd-workspace-group > :is(a,button):hover,
+.alshival-app.app-portal .app-sidebar .wd-directory-link:hover { background:color-mix(in srgb,var(--app-ink) 6%,var(--app-paper)); }
+.alshival-app.app-portal .app-sidebar :is(a,button,input):focus-visible { outline:2px solid #9670d8; outline-offset:-2px; }
+.alshival-app.app-portal .app-sidebar [data-wd-status]:empty { display:none; }
+.alshival-app.app-portal .app-sidebar .wd-sidebar-footer { flex:none; border-top:1px solid var(--app-line); padding-top:8px; }
+.alshival-app.app-portal .app-sidebar .wd-board-children { display:flex; flex-direction:column; margin:4px 0 8px 25px; padding-left:9px; border-left:1px solid var(--app-line); gap:2px; }
+.alshival-app.app-portal .app-sidebar .wd-board-children a,
+.alshival-app.app-portal .app-sidebar .wd-board-children button,
+.wd-board-popover :is(a,button) { display:flex; align-items:center; gap:10px; min-width:0; padding:9px 10px; border-radius:8px; border:0; background:transparent; color:var(--app-ink); font:inherit; font-size:13px; text-decoration:none; text-align:left; cursor:pointer; }
+.alshival-app.app-portal .app-sidebar .wd-board-children [aria-current=page],.wd-board-popover [aria-current=page] { background:color-mix(in srgb,#8c62d1 12%,var(--app-paper)); color:var(--app-ink); }
+.alshival-app.app-portal .app-sidebar .wd-workspace-group > .wd-board-picker { display:none; }
+.alshival-app.app-portal:not(.app-menu-open) .app-sidebar .wd-board-children { display:none; }
+.alshival-app.app-portal:not(.app-menu-open) .app-sidebar .wd-board-picker { display:flex; justify-content:center; min-height:32px; padding:6px; color:var(--app-muted); }
+.wd-board-popover { position:fixed; margin:0; inset:auto; width:230px; max-width:calc(100vw - 24px); max-height:60vh; overflow:auto; box-sizing:border-box; padding:8px; border:1px solid var(--app-line); border-radius:14px; background:var(--app-card); color:var(--app-ink); box-shadow:0 12px 40px #0003; }
+.wd-board-popover p { margin:6px 10px 8px; font-size:12px; color:var(--app-muted); }
+.wd-board-popover :is(a,button) { width:100%; box-sizing:border-box; }
+.wd-board-popover .nav-icon { width:20px; height:20px; flex:none; }
+.wd-board-popover .nav-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.wd-board-popover :is(a,button):hover { background:var(--app-paper); }
+.wd-sidebar-tooltip { position:fixed; z-index:10000; margin:0; border:1px solid var(--app-line); padding:8px 12px; border-radius:9px; background:var(--app-ink); color:var(--app-paper); box-shadow:0 4px 16px #0002; font-size:12px; pointer-events:none; max-width:260px; overflow-wrap:anywhere; }
+@media(max-width:900px) {
+ .alshival-app.app-portal .app-sidebar { width:256px; max-width:calc(100vw - 40px); transform:translateX(-100%); visibility:hidden; transition:transform .18s ease,visibility .18s; z-index:2100; }
+ .alshival-app.app-portal.app-menu-open .app-sidebar { transform:none; visibility:visible; }
+ .alshival-app.app-portal .app-content { margin-left:0; width:100%; }
+}
+@media(prefers-reduced-motion:reduce) { .alshival-app.app-portal .app-sidebar { transition:none; } }
+.alshival-app.app-portal .app-sidebar .wd-more { border:0; border-radius:9px; padding:8px 12px; background:var(--app-paper); color:var(--app-ink); font:inherit; font-size:12px; cursor:pointer; }
+.alshival-app.app-portal .app-sidebar .wd-nav-list::-webkit-scrollbar-button { display:none; }

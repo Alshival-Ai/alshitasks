@@ -4,5 +4,14 @@
   "files": {
     "customer_hub/static/customer_hub/app-shell.css": "e2f18b90c001131bac4f8ea70a4a6428d524c283040745dcd81ff5190d366176"
   },
-  "adaptations": "Local font URLs; React chrome uses portal sidebar classes, cube markup and project/settings SVGs. Desktop navigation contains Projects and Settings only. Lato font remains OFL licensed; see desktop/assets/lato-OFL.txt."
+  "adaptations": "Local font URLs; React chrome uses portal sidebar classes and bundled icons. Account and device settings live in the header. Lato font remains OFL licensed; see desktop/assets/lato-OFL.txt.",
+  "sidebar": {
+    "source_commit": "f859080915983cc801df8839cdc93432b01a9137",
+    "files": {
+      "customer_hub/static/customer_hub/sidebar.css": "d4e2afb41d31a3e70355ac2afe6f635f923cb16e387a792a1bb8fc159b5683c5",
+      "customer_hub/static/customer_hub/sidebar.js": "0a4fcb4cfa2202bfb75c12e47510b8273949748d791a84617fb61989c2157ec2",
+      "customer_hub/static/customer_hub/sidebar-icons.svg": "de49b69f4504e979385cc2070bb6a84c302be46faf92a7b103ca3f374ac12284"
+    },
+    "adaptations": "Identical vendored assets; React renders semantic buttons in place of portal links. Neural Labs opens in the browser only when connected discovery supplies an eligible destination. Sidebar preferences are per desktop account."
+  }
 }

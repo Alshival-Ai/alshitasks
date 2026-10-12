@@ -17,37 +17,15 @@ import "./project-board/portal/workspace-directory.css";
 import { readDeviceState, writeDeviceState } from "./deviceState";
 import { LOCAL_WORKSPACE, selectWorkspace } from "./project-board/api";
 const api = window.tasks.request;
+const sidebarIcons = new URL("./sidebar-icons.svg?no-inline", import.meta.url).href;
+import "./sidebar.css";
+import "./sidebar.js";
 function NavIcon({ name }: { name: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {name === "Projects" ? (
-        <>
-          <path d="M3 7a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-          <path d="m9 14 2 2 4-4" />
-        </>
-      ) : name === "Settings" ? (
-        <>
-          <circle cx="12" cy="12" r="7" />
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" />
-        </>
-      ) : (
-        <path d="m9 5 7 7-7 7" />
-      )}
-    </svg>
-  );
+  return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><use href={`${sidebarIcons}#${name}`} /></svg>;
 }
 function App() {
   const [expanded, setExpanded] = useState(
-    () => readDeviceState("alshitasks", "sidebar") === true,
+    () => window.innerWidth > 900 && readDeviceState("alshitasks", "sidebar") !== false,
   );
   useEffect(() => {
     document.body.classList.add(
@@ -56,12 +34,43 @@ function App() {
       "native-workspaces",
     );
     document.body.classList.toggle("app-menu-open", expanded);
-    writeDeviceState("alshitasks", "sidebar", expanded);
   }, [expanded]);
   const navigationGuard = useRef<(() => boolean) | null>(null);
   const [workspace, setWorkspace] = useState(LOCAL_WORKSPACE);
 
   const [accountInfo, setAccountInfo] = useState<any>({});
+  const [narrow, setNarrow] = useState(() => window.innerWidth <= 900);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const sidebarAccount = accountInfo.account?.id || "local";
+  const toggleSidebar = () => {
+    const next = !expanded; setExpanded(next);
+    if (!narrow) writeDeviceState(sidebarAccount, "sidebar", next);
+  };
+  useEffect(() => {
+    const saved = readDeviceState(sidebarAccount, "sidebar") ?? readDeviceState("alshitasks", "sidebar");
+    setExpanded(window.innerWidth > 900 && saved !== false);
+  }, [sidebarAccount]);
+  useEffect(() => {
+    const media = matchMedia("(max-width:900px)");
+    const change = () => { setNarrow(media.matches); setExpanded(!media.matches && readDeviceState(sidebarAccount,"sidebar") !== false); };
+    media.addEventListener("change",change); return () => media.removeEventListener("change",change);
+  }, [sidebarAccount]);
+  useEffect(() => {
+    if (!narrow || !expanded) return;
+    const previous = document.activeElement as HTMLElement;
+    const sidebar = sidebarRef.current!;
+    sidebar.querySelector<HTMLButtonElement>("button")?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") { event.preventDefault(); setExpanded(false); }
+      if (event.key !== "Tab") return;
+      const controls = [...sidebar.querySelectorAll<HTMLElement>("a[href],button,input,summary")].filter(e => e.offsetParent !== null && !e.hasAttribute("disabled"));
+      if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
+      else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
+    };
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("keydown",key); previous?.focus(); };
+  }, [narrow, expanded]);
+
   const [localBoards, setLocalBoards] = useState<Item[]>([]);
   const [publications, setPublications] = useState<any[]>([]);
   const [publishBoard, setPublishBoard] = useState(LOCAL_WORKSPACE);
@@ -270,9 +279,21 @@ function App() {
     e.preventDefault();
     return Object.fromEntries(new FormData(e.currentTarget));
   };
+  const selectedWorkspace = workspaces.find(w => w.id === workspace);
+  const boards = boardNavigation.filter(b => !b.data.archived);
+  const multipleBoards = boards.length + (workspace === LOCAL_WORKSPACE ? 1 : 0) > 1;
+  const boardLinks = <>
+    {workspace === LOCAL_WORKSPACE && <button aria-label="Workspace board" aria-current={!activeBoard ? "page" : undefined} onClick={() => selectBoard(workspace, "")}><NavIcon name="board"/><span className="nav-label">Workspace board</span></button>}
+    {boards.map(b => <button key={b.id} title={b.data.title} aria-label={b.data.title} aria-current={activeBoard === b.id ? "page" : undefined} onClick={() => selectBoard(workspace,b.id)}><NavIcon name="board"/><span className="nav-label">{b.data.title}</span></button>)}
+  </>;
+  const openLabs = () => {
+    if (!selectedWorkspace?.neural_labs_url || !selectedWorkspace.portal_origin || selectedWorkspace.state !== "connected") return;
+    const origin = new URL(selectedWorkspace.portal_origin), target = new URL(selectedWorkspace.neural_labs_url,origin);
+    if (target.origin === origin.origin && target.protocol === "https:") void window.tasks.external(target.href);
+  };
   return (
     <>
-      <aside className="app-sidebar" aria-label="Alshival navigation">
+      <aside ref={sidebarRef} id="app-sidebar" className="app-sidebar" aria-label="Alshival navigation" inert={narrow && !expanded} role={narrow && expanded ? "dialog" : undefined} aria-modal={narrow && expanded ? true : undefined}>
         <div className="app-sidebar-controls">
           <button
             type="button"
@@ -281,7 +302,7 @@ function App() {
             aria-expanded={expanded}
             aria-label={expanded ? "Collapse menu" : "Expand menu"}
             title={expanded ? "Collapse menu" : "Expand menu"}
-            onClick={() => setExpanded(!expanded)}
+            onClick={toggleSidebar}
           >
             <NavIcon name="toggle" />
           </button>
@@ -292,47 +313,22 @@ function App() {
               className="wd-directory-link"
               onClick={() => showTab("Workspaces")}
               title="Workspaces"
+              aria-label="Workspaces"
+              aria-current={tab === "Workspaces" ? "page" : undefined}
             >
-              <span aria-hidden="true">&#9638;</span>
+              <NavIcon name="workspaces" />
               <span className="nav-label">Workspaces</span>
             </button>
             <WorkspaceList
               rows={availableWorkspaces}
               current={tab === "Projects" ? workspace : ""}
               select={changeWorkspace}
-            />
-            {tab === "Projects" && (
-              <nav
-                className="wd-board-navigation"
-                aria-label="Current workspace boards"
-              >
-                <p className="nav-label">Boards</p>
-                {workspace === LOCAL_WORKSPACE && (
-                  <button
-                    title="Workspace board"
-                    aria-current={!activeBoard ? "page" : undefined}
-                    onClick={() => selectBoard(workspace, "")}
-                  >
-                    <span aria-hidden="true">▤</span>
-                    <span className="nav-label">Workspace board</span>
-                  </button>
-                )}
-                {boardNavigation
-                  .filter((b) => !b.data.archived)
-                  .map((b) => (
-                    <button
-                      key={b.id}
-                      title={b.data.title}
-                      aria-current={activeBoard === b.id ? "page" : undefined}
-                      onClick={() => selectBoard(workspace, b.id)}
-                    >
-                      <span aria-hidden="true">▤</span>
-                      <span className="nav-label">{b.data.title}</span>
-                    </button>
-                  ))}
-              </nav>
-            )}
+            >
+              {tab === "Projects" && multipleBoards && <><nav className="wd-board-children" aria-label="Current workspace boards">{boardLinks}</nav><button className="wd-board-picker" data-sidebar-boards="sidebar-boards" aria-label="Choose board" title="Choose board"><NavIcon name="board"/></button></>}
+            </WorkspaceList>
           </div>
+          {tab === "Projects" && multipleBoards && <div id="sidebar-boards" className="wd-board-popover" popover="auto" aria-label="Choose board"><p>Choose board</p>{boardLinks}</div>}
+          {tab === "Projects" && selectedWorkspace?.state === "connected" && selectedWorkspace?.neural_labs_url && <div className="wd-sidebar-footer"><button className="wd-directory-link" onClick={openLabs} aria-label="Neural Labs (opens in browser)" title="Neural Labs · opens in browser"><NavIcon name="labs"/><span className="nav-label">Neural Labs</span></button></div>}
         </div>
       </aside>
       {expanded && (
@@ -342,13 +338,14 @@ function App() {
           onClick={() => setExpanded(false)}
         />
       )}
-      <main className="app-content">
+      <main className="app-content" inert={narrow && expanded}>
         <header className="app-header">
           <button
             className="app-mobile-toggle"
             aria-label="Open navigation"
+            aria-controls="app-sidebar"
             aria-expanded={expanded}
-            onClick={() => setExpanded(!expanded)}
+            onClick={toggleSidebar}
           >
             <NavIcon name="toggle" />
           </button>
