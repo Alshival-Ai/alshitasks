@@ -5,14 +5,20 @@ from pathlib import Path
 WINDOWS = os.name == "nt"
 
 
-def user_sid():
+def token_sid(owner=False):
     import win32api
     import win32security
     token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), 8)
     try:
+        if owner:
+            return win32security.GetTokenInformation(token, win32security.TokenOwner)
         return win32security.GetTokenInformation(token, win32security.TokenUser)[0]
     finally:
         token.Close()
+
+
+def user_sid():
+    return token_sid()
 
 
 def owned(path):
@@ -21,7 +27,9 @@ def owned(path):
     import win32security as security
     owner = security.GetNamedSecurityInfo(str(path), security.SE_FILE_OBJECT,
                                          security.OWNER_SECURITY_INFORMATION).GetSecurityDescriptorOwner()
-    return owner == user_sid()
+    # Elevated Windows tokens can create files owned by their default owner
+    # (Administrators). A filtered, ordinary token defaults to its user SID.
+    return owner in (user_sid(), token_sid(owner=True))
 
 
 def protect(path, directory=False):
@@ -35,8 +43,8 @@ def protect(path, directory=False):
     for sid in (user_sid(), security.CreateWellKnownSid(security.WinLocalSystemSid)):
         acl.AddAccessAllowedAceEx(security.ACL_REVISION, flags, 0x1F01FF, sid)
     security.SetNamedSecurityInfo(str(path), security.SE_FILE_OBJECT,
-                                 security.DACL_SECURITY_INFORMATION | security.PROTECTED_DACL_SECURITY_INFORMATION,
-                                 None, None, acl, None)
+                                 security.OWNER_SECURITY_INFORMATION | security.DACL_SECURITY_INFORMATION | security.PROTECTED_DACL_SECURITY_INFORMATION,
+                                 user_sid(), None, acl, None)
 
 
 def lock_file(stream):
