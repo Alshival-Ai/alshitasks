@@ -67,7 +67,7 @@ Exec=alshitasks
 Icon=alshitasks
 Terminal=false
 Categories=Office;ProjectManagement;
-StartupWMClass=Alshival.Ai
+StartupWMClass=alshitasks
 """)
 for source in (root / "desktop/assets").glob("alshival-*x*.png"):
     size = source.stem.split("-")[-1]

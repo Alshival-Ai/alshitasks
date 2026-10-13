@@ -52,6 +52,14 @@ try {
   await once(watcher.stdout, "data");
   let page = await launch();
   await expect.poll(visible).toBe(true);
+  const windowId = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].getNativeWindowHandle().readUInt32LE(0),
+  );
+  const windowClass = execFileSync("xprop", ["-id", String(windowId), "WM_CLASS"], {
+    encoding: "utf8",
+  });
+  assert.match(windowClass, /WM_CLASS\(STRING\) = "alshitasks", "alshitasks"/);
+
   await page.evaluate(() => {
     window.trayDraft = "preserved";
   });

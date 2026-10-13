@@ -1,6 +1,7 @@
 {
   "name": "alshitasks",
   "productName": "Alshival.Ai",
+  "desktopName": "alshitasks.desktop",
   "version": "0.1.15",
   "description": "Local-first Linux task boards, resources and monitoring",
   "license": "Apache-2.0",

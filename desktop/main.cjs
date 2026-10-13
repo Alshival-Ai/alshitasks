@@ -88,6 +88,9 @@ app.on("will-quit", () => {
 });
 app.on("activate", showWindow);
 app.setName("Alshival.Ai");
+// Match the installed launcher on Wayland and X11 so the dock groups and
+// activates our existing window instead of creating an unidentified app.
+app.setDesktopName("alshitasks.desktop");
 app.setPath(
   "userData",
   testRoot
