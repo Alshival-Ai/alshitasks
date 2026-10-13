@@ -1,0 +1,50 @@
+[
+  {
+    "id": "home",
+    "name": "Home"
+  },
+  {
+    "id": "layers",
+    "name": "Layers"
+  },
+  {
+    "id": "cube",
+    "name": "Cube"
+  },
+  {
+    "id": "rocket",
+    "name": "Rocket"
+  },
+  {
+    "id": "globe",
+    "name": "Globe"
+  },
+  {
+    "id": "code",
+    "name": "Code"
+  },
+  {
+    "id": "leaf",
+    "name": "Leaf"
+  },
+  {
+    "id": "spark",
+    "name": "Spark"
+  },
+  {
+    "id": "compass",
+    "name": "Compass"
+  },
+  {
+    "id": "briefcase",
+    "name": "Briefcase"
+  },
+  {
+    "id": "terminal",
+    "name": "Terminal"
+  },
+  {
+    "id": "network",
+    "name": "Network"
+  }
+]

@@ -111,6 +111,9 @@ class API:
             if method == "GET":
                 return taxonomy.catalog(s)
             return self.execute_tool("project_taxonomy_write", body, owner=owner, token=token)
+        if path == "/v1/workspaces/icon":
+            from .workspace_icons import dispatch
+            return dispatch(s, method, body, owner)
         if path == "/v1/workspaces":
             from .workspaces import catalog
 

@@ -47,6 +47,30 @@ class Workspaces(unittest.TestCase):
                 ),
             )
 
+    def test_icon_catalog_matches_renderer(self):
+        root = Path(__file__).resolve().parents[1]
+        self.assertEqual((root/'desktop/renderer/workspace-icons.json').read_bytes(), (root/'service/alshitasks/assets/workspace-icons.json').read_bytes())
+
+    def test_workspace_icons_local_persistence_validation_and_shared_proxy(self):
+        local = '/v1/workspaces/icon?workspace_id='+LOCAL
+        def call(path, method='GET', body=None):
+            with self.s.tx():
+                return self.api.dispatch(path,method,body,True)
+        self.assertEqual(call(local)['icon'], '')
+        self.assertEqual(call(local,'POST',{'icon':'rocket','revision':0})['revision'], 1)
+        self.assertEqual(call('/v1/workspaces')['workspaces'][0]['icon'], 'rocket')
+        with self.assertRaises(Problem):call(local,'POST',{'icon':'leaf','revision':0})
+        with self.assertRaises(Problem):call(local,'POST',{'icon':'../file','revision':1})
+        path = '/v1/workspaces/icon?workspace_id='+self.remote[0]['id']
+        with patch('alshitasks.portal.Portal.token', return_value='fixture'), patch('alshitasks.portal.remote', return_value={'icon':'leaf','revision':2,'can_manage':True}) as remote:
+            self.assertEqual(call(path,'POST',{'icon':'leaf','revision':1})['icon'],'leaf')
+            self.assertEqual(remote.call_args.args[1], '/desktop/v1/workspaces/'+self.remote[0]['id']+'/icon')
+        rows=call('/v1/workspaces')['workspaces']
+        self.assertEqual(next(w for w in rows if w['id']==self.remote[0]['id'])['icon'],'leaf')
+        with self.s.tx():self.s.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (self.ids[0],))
+        self.assertFalse(call(path)['can_manage'])
+        with self.assertRaises(Problem):call(path,'POST',{'icon':'home','revision':2})
+
     def test_discovery_refreshes_existing_connection_capabilities(self):
         import json
 

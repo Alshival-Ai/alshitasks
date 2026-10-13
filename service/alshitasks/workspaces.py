@@ -14,6 +14,7 @@ def catalog(store):
         {
             "id": LOCAL,
             "name": "Local workspace",
+            "icon": store.setting("local_workspace_icon", {}).get("icon", ""),
             "local": True,
             "state": "local",
             "scopes": ["project:read", "project:write"],
@@ -38,6 +39,7 @@ def catalog(store):
                 "id": r["workspace"],
                 "connection_id": r["id"],
                 "name": meta.get("name", r["workspace"]),
+                "icon": meta.get("icon", ""),
                 "local": False,
                 "kind": meta.get("kind", "customer"),
                 "unread": meta.get("unread"),

@@ -210,10 +210,12 @@ function App() {
       if (!document.hidden) void refresh().catch(() => {});
     };
     const unsubscribe = window.tasks.onChanged(update);
+    window.addEventListener("workspace-icon-changed", update);
     const t = setInterval(update, 30000);
     return () => {
       clearInterval(t);
       unsubscribe();
+      window.removeEventListener("workspace-icon-changed", update);
     };
   }, []);
   const initializedAccount = useRef<string | null>(null);

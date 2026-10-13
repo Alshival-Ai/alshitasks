@@ -1,3 +1,4 @@
+import { WorkspaceIcon, WorkspaceIconSettings } from "./WorkspaceIcon";
 import { TaxonomySettings } from "./project-board/Taxonomy";
 import { WorkspaceBoards } from "./WorkspaceBoards";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -5,6 +6,7 @@ import "./project-board/portal/workspace-directory.css";
 export type Workspace = {
   id: string;
   name: string;
+  icon?: string;
   local?: boolean;
   state?: string;
   kind?: string;
@@ -83,6 +85,7 @@ export function WorkspaceCog({ workspace }: { workspace: Workspace }) {
             Close
           </button>
         </header>
+        {open && <WorkspaceIconSettings workspace={workspace.id} name={workspace.name} />}
         <p>Types and labels are shared by every board in this workspace.</p>
         {open && <TaxonomySettings workspace={workspace.id} />}
         {workspace.settings_url && (
@@ -195,7 +198,7 @@ export function WorkspaceList({
                 className={switcher ? "app-workspace-avatar" : "wd-avatar"}
                 aria-hidden="true"
               >
-                {w.name.slice(0, 1)}
+                <WorkspaceIcon icon={w.icon} name={w.name} />
               </span>
               <span
                 className={switcher ? "app-workspace-option-name" : "nav-label"}
@@ -369,7 +372,7 @@ export function WorkspaceDirectory({
           <article key={w.id} className="wd-card">
             <div className="wd-card-top">
               <span className="wd-avatar" aria-hidden="true">
-                {w.name.slice(0, 1)}
+                <WorkspaceIcon icon={w.icon} name={w.name} />
               </span>
               <WorkspaceCog workspace={w} />
             </div>

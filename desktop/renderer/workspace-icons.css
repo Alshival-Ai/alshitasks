@@ -1,0 +1,7 @@
+
+/* Bundled vector artwork inherits the active theme foreground. */
+.workspace-icon{display:inline-block;width:24px;height:24px;flex:none;color:inherit;vertical-align:middle}
+.workspace-icon-picker{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;border:0;padding:0;margin:16px 0}
+.workspace-icon-picker legend{font-weight:600;margin-bottom:8px}.workspace-icon-picker label{display:flex!important;flex-direction:column;align-items:center;justify-content:center;gap:7px;padding:12px 6px;border:1px solid color-mix(in srgb,currentColor 18%,transparent);border-radius:12px;cursor:pointer;background:color-mix(in srgb,currentColor 4%,transparent);color:inherit;position:relative;margin:0!important;min-height:70px}
+.workspace-icon-picker label:has(:checked){border-color:var(--matrix-color-b,#8058dd);background:color-mix(in srgb,var(--matrix-color-b,#8058dd) 18%,transparent)}
+.workspace-icon-picker label:focus-within{outline:2px solid var(--matrix-color-b,#8058dd);outline-offset:2px}.workspace-icon-picker input[type=radio]{position:absolute;opacity:0;width:1px;height:1px}.workspace-icon-picker small{font-size:11px}.workspace-icon-picker:disabled{opacity:.65}
