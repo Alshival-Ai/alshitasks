@@ -122,8 +122,12 @@ try {
     execFileSync(
       "/usr/bin/python3",
       [path.join(appPath, "service/alshitasks-cli.py"), "--root", root, "stop"],
-      { timeout: 5000, stdio: "ignore" },
+      { timeout: 5000, killSignal: "SIGKILL", stdio: "ignore" },
     );
   } catch {}
   await rm(root, { recursive: true, force: true });
 }
+
+// Electron can leave debug transport handles alive after all assertions and cleanup.
+// Reaching this point means the test passed; thrown failures never reach this exit.
+process.exit(0);
