@@ -2,6 +2,8 @@ import base64
 import hashlib
 import json
 import os
+import uuid
+import secrets
 import sqlite3
 from datetime import datetime, timezone, timedelta
 from .store import Problem
@@ -19,6 +21,40 @@ class Logs:
         self.db.executescript(
             "CREATE TABLE IF NOT EXISTS logs(id TEXT,resource TEXT,timestamp TEXT,severity TEXT,message TEXT,attributes TEXT,bytes INTEGER,PRIMARY KEY(id,resource));CREATE INDEX IF NOT EXISTS log_timestamp ON logs(timestamp);CREATE INDEX IF NOT EXISTS log_resource_time ON logs(resource,timestamp DESC,id);"
         )
+        # Additive migration: legacy IDs and event content remain intact.
+        columns = {r[1] for r in self.db.execute("PRAGMA table_info(logs)")}
+        if "cloud_id" not in columns and self.db.execute("SELECT 1 FROM logs LIMIT 1").fetchone():
+            backup_path = self.path.with_suffix(".pre-cloud-v1.sqlite")
+            if not backup_path.exists():
+                fd = os.open(backup_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                os.close(fd)
+                with sqlite3.connect(backup_path) as backup:
+                    self.db.backup(backup)
+        with self.db:
+            for column in ("received_at", "cloud_id", "source", "trace_id", "span_id", "transport"):
+                if column not in columns:
+                    self.db.execute(f"ALTER TABLE logs ADD COLUMN {column} TEXT NOT NULL DEFAULT ''")
+            for row in self.db.execute(
+                "SELECT id,resource,timestamp FROM logs WHERE cloud_id='' "
+            ).fetchall():
+                self.db.execute(
+                    "UPDATE logs SET cloud_id=?,received_at=? WHERE id=? AND resource=?",
+                    (
+                        str(uuid.uuid5(uuid.NAMESPACE_URL, row["resource"] + ":" + row["id"])),
+                        row["timestamp"],
+                        row["id"],
+                        row["resource"],
+                    ),
+                )
+            self.db.execute("CREATE UNIQUE INDEX IF NOT EXISTS log_cloud_id ON logs(cloud_id)")
+            self.db.execute(
+                "CREATE INDEX IF NOT EXISTS log_received ON logs(resource,received_at DESC,cloud_id DESC)"
+            )
+            self.db.execute("CREATE TABLE IF NOT EXISTS log_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
+            self.db.execute(
+                "INSERT OR IGNORE INTO log_meta VALUES('cursor_secret',?)", (secrets.token_hex(32),)
+            )
+            self.db.execute("PRAGMA user_version=1")
         os.chmod(paths.data / "logs.sqlite", 0o600)
 
     def ingest(self, resource, events):
@@ -61,7 +97,17 @@ class Logs:
             )
         with self.db:
             before = self.db.total_changes
-            self.db.executemany("INSERT OR IGNORE INTO logs VALUES(?,?,?,?,?,?,?)", validated)
+            self.db.executemany(
+                "INSERT OR IGNORE INTO logs(id,resource,timestamp,severity,message,attributes,bytes,received_at,cloud_id) VALUES(?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        *r,
+                        datetime.now(timezone.utc).isoformat(),
+                        str(uuid.uuid5(uuid.NAMESPACE_URL, resource + ":" + r[0])),
+                    )
+                    for r in validated
+                ],
+            )
             added = self.db.total_changes - before
         return dict(accepted=added, duplicates=len(events) - added)
 
@@ -150,10 +196,15 @@ class Logs:
             raise Problem("Retention must be 1..365 days and 1 MiB..10 GiB")
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         with self.db:
-            self.db.execute("DELETE FROM logs WHERE timestamp<?", (cutoff,))
+            self.db.execute(
+                "DELETE FROM logs WHERE (CASE WHEN transport='cloud' THEN received_at ELSE timestamp END)<?",
+                (cutoff,),
+            )
             total = self.db.execute("SELECT COALESCE(SUM(bytes),0) FROM logs").fetchone()[0]
             if total > max_bytes:
-                for r in self.db.execute("SELECT id,resource,bytes FROM logs ORDER BY timestamp").fetchall():
+                for r in self.db.execute(
+                    "SELECT id,resource,bytes FROM logs ORDER BY CASE WHEN transport='cloud' THEN received_at ELSE timestamp END"
+                ).fetchall():
                     self.db.execute("DELETE FROM logs WHERE id=? AND resource=?", (r["id"], r["resource"]))
                     total -= r["bytes"]
                     if total <= max_bytes:
@@ -171,7 +222,7 @@ class Logs:
                     if pages * page_size <= max_bytes:
                         break
                     oldest = self.db.execute(
-                        "SELECT id,resource FROM logs ORDER BY timestamp LIMIT 100"
+                        "SELECT id,resource FROM logs ORDER BY CASE WHEN transport='cloud' THEN received_at ELSE timestamp END LIMIT 100"
                     ).fetchall()
                     if not oldest:
                         break

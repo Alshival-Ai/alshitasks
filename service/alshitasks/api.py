@@ -59,6 +59,10 @@ class API:
         return row[0] if row else (self.store.setting("remote_edge:" + ident, {}).get("created_at") or now())
 
     def dispatch(self, path, method="GET", body=None, owner=False, token=""):
+        from .cloud_logs import ROUTE, dispatch as cloud_dispatch
+
+        if ROUTE.fullmatch(urlsplit(path).path):
+            return cloud_dispatch(self, path, method, body, owner, token)
         if path.startswith("/v1/notifications"):
             from .notifications import request
 
@@ -79,6 +83,7 @@ class API:
             raise Problem("JSON object required")
         if path == "/v1/mcp":
             from .mcp_parity import call
+
             return call(self, body.get("name"), body.get("arguments", {}), owner=owner, token=token)
         resource = body.get("resource_id") or q.get("resource_id")
         if not owner:
@@ -98,9 +103,11 @@ class API:
                 raise Problem("Resource grant cannot access project records", 403)
         if path == "/v1/projects/taxonomy/review" and method == "POST":
             from .taxonomy import review
+
             return review(s, body)
         if path == "/v1/projects/taxonomy":
             from . import taxonomy
+
             if method == "GET":
                 return taxonomy.catalog(s)
             return self.execute_tool("project_taxonomy_write", body, owner=owner, token=token)
@@ -117,7 +124,13 @@ class API:
             parts = suffix.strip("/").split("/")
             if suffix == "/items":
                 if method == "GET":
-                    return s.list(q.get("after", ""), q.get("kind"), int(q.get("limit", 100)), type_ids=[v for v in q.get("type_ids", "").split(",") if v], label_ids=[v for v in q.get("label_ids", "").split(",") if v])
+                    return s.list(
+                        q.get("after", ""),
+                        q.get("kind"),
+                        int(q.get("limit", 100)),
+                        type_ids=[v for v in q.get("type_ids", "").split(",") if v],
+                        label_ids=[v for v in q.get("label_ids", "").split(",") if v],
+                    )
                 if method == "POST":
                     return s.create(body)
             if len(parts) >= 2 and parts[0] == "items":
@@ -191,7 +204,14 @@ class API:
             row = require_item(s, resource)
             if s.item(resource)["kind"] != "resource":
                 raise Problem("Choose a resource")
+            from .cloud_logs import identity
+
+            workspace, public_resource = identity(s, resource)
             return {
+                "workspace_id": workspace,
+                "resource_id": public_resource,
+                "logs_path": f"/v1/workspaces/{workspace}/resources/{public_resource}/logs",
+                "otlp_path": f"/v1/workspaces/{workspace}/resources/{public_resource}/otlp/v1/logs",
                 "connected": bool(row["connection"]),
                 "http_port": s.setting("http_port", None),
                 "keys": [
@@ -423,17 +443,37 @@ class API:
             Secrets().put(ident, body["value"])
             return {"id": ident}
         if path == "/v1/forwarding":
+            if not owner:
+                raise Problem("Desktop owner authorization required", 403)
+            from .workspaces import require_item, visible
+
+            if resource:
+                require_item(s, resource)
             if method == "GET":
-                return {
-                    "targets": [
-                        dict(r)
-                        for r in s.db.execute("SELECT id,destination,resource_id,enabled FROM forwarding")
-                    ],
-                    "queued": s.db.execute("SELECT COUNT(*) FROM forward_queue").fetchone()[0],
-                }
+                targets = []
+                for r in s.db.execute("SELECT id,destination,resource_id,enabled FROM forwarding"):
+                    if resource and r["resource_id"] != resource:
+                        continue
+                    try:
+                        require_item(s, r["resource_id"])
+                    except Problem:
+                        continue
+                    targets.append(
+                        dict(
+                            r,
+                            status=s.setting(
+                                "forward_status:" + r["id"],
+                                {"state": "pending", "message": "Waiting for logs."},
+                            ),
+                            queued=s.db.execute(
+                                "SELECT COUNT(*) FROM forward_queue WHERE target=?", (r["id"],)
+                            ).fetchone()[0],
+                        )
+                    )
+                return {"targets": targets, "queued": sum(t["queued"] for t in targets)}
             if method == "POST":
                 u = urlsplit(body.get("destination", ""))
-                if u.scheme != "https" or not u.hostname or u.username or u.password:
+                if u.scheme != "https" or not u.hostname or u.username or u.password or u.fragment or u.query:
                     raise Problem("HTTPS destination required")
                 if s.item(resource)["kind"] != "resource":
                     raise Problem("Resource required")
@@ -444,9 +484,26 @@ class API:
                     (ident, body["destination"], resource, body["credential"]),
                 )
                 return {"id": ident}
-            if method == "DELETE":
-                s.db.execute("UPDATE forwarding SET enabled=0 WHERE id=?", (body["id"],))
-                return {"disabled": True}
+            if method in ("DELETE", "PATCH"):
+                target = s.db.execute(
+                    "SELECT resource_id FROM forwarding WHERE id=?", (body["id"],)
+                ).fetchone()
+                if not target:
+                    raise Problem("Target unavailable", 404)
+                require_item(s, target["resource_id"])
+                if method == "DELETE":
+                    s.db.execute("UPDATE forwarding SET enabled=0 WHERE id=?", (body["id"],))
+                    return {"disabled": True}
+                if body.get("credential"):
+                    Secrets().get(body["credential"])
+                    s.db.execute(
+                        "UPDATE forwarding SET credential=? WHERE id=?", (body["credential"], body["id"])
+                    )
+                s.set_setting(
+                    "forward_status:" + body["id"], {"state": "pending", "message": "Retry requested."}
+                )
+                s.db.execute("UPDATE forward_queue SET next_at=0 WHERE target=?", (body["id"],))
+                return {"retrying": True}
         if path == "/v1/agent-grants" and method == "POST":
             result = grant_create(s, body)
             Secrets().put(result["id"], result["token"])
@@ -621,9 +678,11 @@ class API:
             s.item(args["board_id"])
         if name == "project_taxonomy":
             from .taxonomy import catalog
+
             return catalog(s)
         if name == "project_taxonomy_write":
             from .taxonomy import configure
+
             return configure(s, args)
         if name == "project_statuses":
             return self.status_catalog(args.get("board_id"))

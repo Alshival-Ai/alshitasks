@@ -402,9 +402,9 @@ class Portal:
             token = self.token(c)
             if path.endswith("/logs"):
                 filters = {
-                    k: v for k, v in q.items() if k in ("since", "until", "severity", "text", "limit") and v
+                    k: v for k, v in q.items() if k in ("since", "until", "severity", "text", "limit", "start", "end", "q", "trace_id", "cursor") and v
                 }
-                filters.update(resource_id=row["remote_id"], limit=min(100, max(1, int(q.get("limit", 100)))))
+                filters.update(resource_id=row["remote_id"], limit=min(200, max(1, int(q.get("limit", 100)))))
                 return remote(
                     c["origin"],
                     "/desktop/v1/workspaces/" + c["workspace"] + "/logs?" + urlencode(filters),

@@ -41,6 +41,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.handle_api()
 
     def handle_api(self):
+        from .cloud_logs import ROUTE
+        from urllib.parse import urlsplit
+        if ROUTE.fullmatch(urlsplit(self.path).path):
+            from .cloud_http import handle
+            return handle(self)
         api = self.server.api
         try:
             owner = False

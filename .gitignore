@@ -11,3 +11,5 @@ __pycache__/
 *.sqlite*
 test-results/
 playwright-report/
+
+service/_vendor/

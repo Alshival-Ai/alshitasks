@@ -1,3 +1,5 @@
+import urllib.error
+
 """Bounded local probes; configured execution never travels through task sync."""
 
 import importlib
@@ -205,6 +207,13 @@ def queue_forward(store, resource, events):
         for e in events:
             data = json.dumps({"resource_id": resource, "events": [e]})
             if total + len(data.encode()) > 16 * 1024**2:
+                store.set_setting(
+                    "forward_status:" + target["id"],
+                    {
+                        "state": "full",
+                        "message": "Forwarding queue is full; new cloud copies are being skipped. Local logs remain available.",
+                    },
+                )
                 break
             store.db.execute(
                 "INSERT OR IGNORE INTO forward_queue(id,target,data,bytes) VALUES(?,?,?,?)",
@@ -214,27 +223,75 @@ def queue_forward(store, resource, events):
 
 
 def forward_once(store, secrets=None):
-    row = store.db.execute(
-        "SELECT q.*,f.destination,f.credential FROM forward_queue q JOIN forwarding f ON f.id=q.target WHERE f.enabled=1 AND q.next_at<=? ORDER BY q.next_at LIMIT 1",
+    rows = store.db.execute(
+        "SELECT q.*,f.destination,f.credential FROM forward_queue q JOIN forwarding f ON f.id=q.target WHERE f.enabled=1 AND q.next_at<=? ORDER BY q.next_at",
         (time.time(),),
-    ).fetchone()
+    ).fetchall()
+    row = next(
+        (r for r in rows if store.setting("forward_status:" + r["target"], {}).get("state") != "blocked"),
+        None,
+    )
     if not row:
         return
     try:
         token = (secrets or Secrets()).get(row["credential"])
         request = urllib.request.Request(
             row["destination"],
-            data=row["data"].encode(),
+            data=forward_payload(row["destination"], row["data"]),
             headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
         )
-        with urllib.request.build_opener(NoRedirect).open(
-            request, timeout=8
-        ) as response:
+        with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
             if not 200 <= response.status < 300:
                 raise ValueError()
         store.db.execute("DELETE FROM forward_queue WHERE id=? AND target=?", (row["id"], row["target"]))
-    except Exception:
+        store.set_setting(
+            "forward_status:" + row["target"], {"state": "connected", "message": "Last batch delivered."}
+        )
+    except Exception as error:
+        permanent = (
+            isinstance(error, urllib.error.HTTPError)
+            and 400 <= error.code < 500
+            and error.code not in (408, 429)
+        )
+        store.set_setting(
+            "forward_status:" + row["target"],
+            {
+                "state": "blocked" if permanent else "retrying",
+                "message": f"Cloud returned HTTP {error.code}; fix the token or destination and retry."
+                if permanent
+                else "Cloud unavailable; retrying with backoff.",
+            },
+        )
+        delay = min(3600, 2 ** min(12, row["attempts"] + 1))
+        if isinstance(error, urllib.error.HTTPError):
+            try:
+                delay = max(delay, min(86400, int(error.headers.get("Retry-After", "0"))))
+            except (ValueError, TypeError):
+                pass
         store.db.execute(
             "UPDATE forward_queue SET attempts=attempts+1,next_at=? WHERE id=? AND target=?",
-            (time.time() + min(3600, 2 ** min(12, row["attempts"] + 1)), row["id"], row["target"]),
+            (time.time() + (86400 if permanent else delay), row["id"], row["target"]),
         )
+
+
+def forward_payload(destination, data):
+    """Version adapter: preserve legacy queues; cloud transport excludes sender IDs."""
+    from .cloud_logs import ROUTE, severity
+    from urllib.parse import urlsplit
+
+    payload = json.loads(data)
+    match = ROUTE.fullmatch(urlsplit(destination).path)
+    if not match:
+        return data.encode()
+    if match[3] != "logs":
+        raise Problem("Forwarding requires a JSON logs endpoint")
+    events = []
+    for event in payload["events"]:
+        converted = {
+            k: v
+            for k, v in event.items()
+            if k in ("timestamp", "severity", "message", "attributes", "source", "trace_id", "span_id")
+        }
+        converted["severity"] = severity(converted.get("severity", "INFO"))
+        events.append(converted)
+    return json.dumps({"events": events}).encode()

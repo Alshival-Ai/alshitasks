@@ -24,6 +24,7 @@ jobs:
         run: |
           gh api --paginate 'repos/Alshival-Ai/alshitasks/releases?per_page=100' --slurp > /tmp/alshitasks-releases.json
           python3 scripts/release-version.py /tmp/alshitasks-releases.json
+      - uses: astral-sh/setup-uv@v6
       - name: Build and test
         if: steps.version.outputs.publish == 'true'
         run: |
@@ -31,6 +32,12 @@ jobs:
           sudo apt-get install -y python3-jsonschema libsecret-tools
           npm ci
           node scripts/startup-preference-test.cjs
+          uv pip install --python /usr/bin/python3 --target service/_vendor -r service/log-requirements.txt
+          uv venv build/log-conformance
+          mkdir -p build/cloud-contract-source
+          tar -xzf contracts/cloud-api-source.tar.gz -C build/cloud-contract-source
+          uv pip install --python build/log-conformance/bin/python ./build/cloud-contract-source 'anyio==4.11.0' jsonschema
+          build/log-conformance/bin/python scripts/log-contract-test.py
           npm run validate
           npm run package:deb
           cd build
@@ -39,6 +46,7 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           sudo apt-get install -y xvfb ./build/alshitasks_*_amd64.deb
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/logs-desktop-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/task-board-test.mjs
       - name: Check packaged tray and startup
         if: steps.version.outputs.publish == 'true'

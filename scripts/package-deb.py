@@ -20,7 +20,27 @@ if stage.exists():
 lib = stage / "usr/lib/alshitasks"
 lib.mkdir(parents=True)
 for name in ("desktop", "service", "contracts", "dist", "docs"):
-    shutil.copytree(root / name, lib / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    shutil.copytree(root / name, lib / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "_vendor"))
+# Bundle CPython codecs for supported Ubuntu Python versions, without runtime pip.
+for minor in ("3.12", "3.13", "3.14"):
+    subprocess.run(
+        [
+            "uv",
+            "pip",
+            "install",
+            "--python-version",
+            minor,
+            "--python-platform",
+            "x86_64-manylinux_2_28",
+            "--only-binary",
+            ":all:",
+            "--target",
+            str(lib / "service/_vendor" / minor),
+            "-r",
+            str(root / "service/log-requirements.txt"),
+        ],
+        check=True,
+    )
 for name in ("package.json", "LICENSE", "NOTICE"):
     shutil.copy2(root / name, lib / name)
 shutil.copytree(root / "node_modules/electron/dist", lib / "electron")

@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/Alshival-Ai/alshival-api",
+  "source_commit": "697c9d820cc97a686a6370acac204e909576811a",
+  "source_directory": "alshival_api",
+  "files": {
+    "events.py": "60bf56f2160cc9a9bc6c72f6c8013e1f5bb8f0bba5543eb280fe4b769b933860",
+    "errors.py": "0eda2decc729caaef830e4f16a5f7ee68c8fb35d7ca94e9b7b79e774625da226"
+  },
+  "conformance_archive": {
+    "path": "contracts/cloud-api-source.tar.gz",
+    "sha256": "ccbd13e3c022cde2f53e94b37a3c13aba68fd7670fd07b5b271f69e27d187fb9"
+  }
+}
