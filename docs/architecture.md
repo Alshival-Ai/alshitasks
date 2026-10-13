@@ -1,5 +1,9 @@
 # Architecture and trust boundaries
 
+Windows keeps the shared Python/SQLite service and React renderer. `platform_support.py` restricts state directories to the current user SID and SYSTEM using protected inheritable DACLs. Permanent credentials are DPAPI encrypted for the current user outside backups. The Windows owner transport binds only `127.0.0.1` on an ephemeral port, requires a random 384-bit token published in the private runtime directory, rejects browser-origin requests, and retains scoped grant checks for agent traffic. The optional exporter port remains grant-authenticated and does not accept the owner token. The runtime token is replaced on each service start; the descriptor is removed on clean shutdown.
+
+The Windows installer includes a checksum-pinned Python runtime and native dependencies. A hidden per-user process owns the backend; Electron provides the tray, native toasts, and optional login startup. Quitting the desktop leaves the service running; native Windows toasts require the desktop/tray process. There is no Windows system service or automatic backend crash restart. Managed Ubuntu enrollment stays Linux-only; Windows uses browser OAuth. The Linux transport, keyring, and systemd paths remain in place.
+
 - `desktop/renderer`: extracted Alshival-authored Neural Labs Projects components, served as packaged content. Layout remains in per-device storage. No portal is embedded.
 - `desktop/main.cjs` and `preload.cjs`: Electron main process, sandboxed renderer, isolated context and a narrow IPC bridge. External links and OAuth use the system browser. Native dialogs own attachment/backup file selection.
 - `service/alshitasks`: per-user Python background service. Standard-library SQLite avoids a native Node ABI dependency. Separate task and log databases use WAL. Migration transactions reject newer schemas rather than downgrading.

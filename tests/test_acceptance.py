@@ -1,4 +1,5 @@
 import base64
+import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import subprocess
@@ -61,7 +62,8 @@ class Acceptance(unittest.TestCase):
         self.store.db.close()
         self.store = Store(self.paths)
         self.assertEqual(self.store.item(x["id"])["data"]["title"], "Test")
-        self.assertEqual(self.paths.runtime.stat().st_mode & 0o777, 0o700)
+        if os.name != "nt":
+            self.assertEqual(self.paths.runtime.stat().st_mode & 0o777, 0o700)
 
     def test_idempotent_retry_and_mismatched_payload(self):
         b = {"kind": "task", "data": {"title": "A"}, "idempotency_key": uid()}
@@ -165,6 +167,15 @@ class Acceptance(unittest.TestCase):
             authorize(self.store, g["token"], "logs:write", r["id"])
 
     def test_secret_service_no_plaintext_fallback(self):
+        if os.name == "nt":
+            with patch.dict(os.environ, {"LOCALAPPDATA": self.temp.name}):
+                secrets = Secrets()
+                secrets.put("test", "never-on-disk")
+                self.assertNotIn(b"never-on-disk", secrets.windows_path("test").read_bytes())
+                self.assertEqual(secrets.get("test"), "never-on-disk")
+                secrets.delete("test")
+                self.assertEqual(secrets.get("test"), "")
+            return
         with patch("shutil.which", return_value=None), self.assertRaises(Problem):
             Secrets().put("test", "never-on-disk")
         self.assertFalse(any(p.name == "credentials" for p in self.paths.data.rglob("*")))
@@ -376,7 +387,7 @@ class Acceptance(unittest.TestCase):
             ["ssh", "-F", str(config), "-G", "alt-fixture"], text=True, capture_output=True, check=True
         ).stdout
         self.assertIn("hostname example.org", resolved)
-        self.assertIn("identityfile " + str(key), resolved)
+        self.assertIn("identityfile " + key.resolve().as_posix(), resolved)
         self.assertIn("stricthostkeychecking ask", resolved)
         with self.store.tx():
             ssh.revoke(self.store, resource["id"])

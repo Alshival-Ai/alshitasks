@@ -1,0 +1,3 @@
+-r log-requirements.txt
+pywin32==311
+jsonschema==4.26.0

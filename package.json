@@ -2,8 +2,8 @@
   "name": "alshitasks",
   "productName": "Alshival.Ai",
   "desktopName": "alshitasks.desktop",
-  "version": "0.1.15",
-  "description": "Local-first Linux task boards, resources and monitoring",
+  "version": "0.1.32",
+  "description": "Local-first Windows and Linux task boards, resources and monitoring",
   "license": "Apache-2.0",
   "type": "module",
   "main": "desktop/main.cjs",
@@ -12,7 +12,8 @@
     "test": "python3 -m unittest discover -s tests -v",
     "validate": "npm run build && npm test",
     "start": "electron .",
-    "package:deb": "npm run build && python3 scripts/package-deb.py"
+    "package:deb": "npm run build && python3 scripts/package-deb.py",
+    "package:windows": "npm run build && python scripts/package-windows.py"
   },
   "dependencies": {
     "react": "19.2.8",
@@ -21,13 +22,14 @@
     "remark-gfm": "4.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.61.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "6.1.2",
-    "typescript": "7.0.2",
-    "vite": "8.3.4",
     "electron": "44.7.0",
-    "@playwright/test": "1.61.1",
-    "prettier": "3.9.10"
+    "electron-builder": "26.8.1",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "vite": "8.3.4"
   }
 }

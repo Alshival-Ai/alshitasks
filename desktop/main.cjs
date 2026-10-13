@@ -2,6 +2,7 @@ const {
   app,
   Menu,
   Tray,
+  Notification,
   nativeTheme,
   BrowserWindow,
   ipcMain,
@@ -19,13 +20,7 @@ const { spawn, execFile } = require("node:child_process");
 
 const root = path.resolve(__dirname, "..");
 const testRoot = process.env.ALSHITASKS_TEST_ROOT;
-const runtime = testRoot
-  ? path.join(testRoot, "runtime")
-  : path.join(
-      process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid()}`,
-      "alshitasks",
-    );
-const socket = path.join(runtime, "service.sock");
+const platform = require("./platform.cjs");
 const { getStartup, setStartup } = require("./startup.cjs");
 let win, fallback, tray;
 let quitting = false;
@@ -40,6 +35,7 @@ function showWindow() {
   win.focus();
 }
 function trayHostAvailable() {
+  if (platform.windows) return Promise.resolve(true);
   return new Promise((resolve) =>
     execFile(
       "/usr/bin/gdbus",
@@ -90,12 +86,13 @@ app.on("activate", showWindow);
 app.setName("Alshival.Ai");
 // Match the installed launcher on Wayland and X11 so the dock groups and
 // activates our existing window instead of creating an unidentified app.
-app.setDesktopName("alshitasks.desktop");
+if (platform.windows) app.setAppUserModelId("ai.alshival.alshitasks");
+else app.setDesktopName("alshitasks.desktop");
 app.setPath(
   "userData",
   testRoot
     ? path.join(testRoot, "desktop")
-    : path.join(
+    : platform.windows ? path.join(platform.base, "desktop") : path.join(
         process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
         "alshitasks",
         "desktop",
@@ -127,7 +124,7 @@ app.on("second-instance", (_event, argv) => {
 });
 const command = (cmd, args) =>
   new Promise((resolve, reject) =>
-    execFile(cmd, args, { timeout: 15000 }, (e, out) =>
+    execFile(cmd, args, { timeout: 15000, windowsHide: true }, (e, out) =>
       e
         ? reject(
             new Error(
@@ -140,12 +137,14 @@ const command = (cmd, args) =>
 function request(url, method = "GET", body) {
   return new Promise((resolve, reject) => {
     const data = body === undefined ? "" : JSON.stringify(body);
+    const transport = platform.connection();
     const req = http.request(
       {
-        socketPath: socket,
+        ...transport,
         path: url,
         method,
         headers: {
+          ...transport.headers,
           "Content-Type": "application/json",
           "Content-Length": Buffer.byteLength(data),
         },
@@ -192,6 +191,21 @@ async function serviceStart() {
     await request("/v1/health");
     return;
   } catch {}
+  if (platform.windows) {
+    fallback = spawn(platform.python, [path.join(root, "service/alshitasks-cli.py"),
+      ...(testRoot ? ["--root", testRoot] : []), "service"], {
+      env: serviceEnvironment(), detached: !testRoot, windowsHide: true, stdio: "ignore",
+    });
+    let launchError;
+    fallback.on("error", (error) => { launchError = error; });
+    if (!testRoot) fallback.unref();
+    for (let i = 0; i < 150; i++) {
+      if (launchError) throw new Error("Could not start the bundled background service");
+      try { await request("/v1/health"); return; } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error("Local service did not start. Run alshitasks status for diagnostics.");
+  }
   // Install a per-user unit on first launch; never enable lingering or system services.
   const config = path.join(
     process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"),
@@ -397,9 +411,16 @@ handle("tasks:restore", async () => {
       "Restore this backup? Current data will be preserved in a recovery folder. Connections, grants and monitoring credentials require setup again.",
   });
   if (answer.response !== 1) return;
-  await command("systemctl", ["--user", "stop", "alshitasks.service"]);
-  const result = await command("/usr/bin/python3", [
+  if (platform.windows) {
+    await request("/v1/stop", "POST");
+    for (let i = 0; i < 100; i++) {
+      if (!fs.existsSync(path.join(platform.runtime, "service.json"))) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  } else await command("systemctl", ["--user", "stop", "alshitasks.service"]);
+  const result = await command(platform.python, [
     path.join(root, "service/alshitasks-cli.py"),
+    ...(testRoot ? ["--root", testRoot] : []),
     "restore",
     v.filePaths[0],
   ]);
@@ -413,7 +434,7 @@ handle("tasks:service", async (action) => {
       () => true,
       () => false,
     );
-    const managed = await command("systemctl", [
+    const managed = platform.windows ? false : await command("systemctl", [
       "--user",
       "is-active",
       "alshitasks.service",
@@ -421,11 +442,11 @@ handle("tasks:service", async (action) => {
       () => true,
       () => false,
     );
-    return { running, managed };
+    return { running, managed, platform: process.platform };
   }
   if (action === "restart") {
     await request("/v1/stop", "POST").catch(() => {});
-    if (!testRoot)
+    if (!testRoot && !platform.windows)
       await command("systemctl", [
         "--user",
         "stop",
@@ -452,7 +473,7 @@ handle("tasks:service", async (action) => {
   }
   if (action === "stop") {
     await request("/v1/stop", "POST");
-    await command("systemctl", ["--user", "stop", "alshitasks.service"]).catch(
+    if (!platform.windows) await command("systemctl", ["--user", "stop", "alshitasks.service"]).catch(
       () => {},
     );
     return;
@@ -560,6 +581,20 @@ app
       }
     });
     await win.loadURL("alshitasks://app/index.html");
+    if (platform.windows && !testRoot) {
+      let polling = false;
+      setInterval(async () => {
+        if (polling || !Notification.isSupported()) return;
+        polling = true;
+        try {
+          for (const row of await request("/v1/desktop-toasts", "POST", {})) {
+            const toast = new Notification({ title: row.title, body: row.body });
+            toast.on("click", () => { showWindow(); win.webContents.send("tasks:notification", row.id); });
+            toast.show();
+          }
+        } catch {} finally { polling = false; }
+      }, 2000).unref();
+    }
     win.on("show", () => win.webContents.send("tasks:changed"));
     let lastRevision,
       checkingRevision = false;

@@ -4,6 +4,8 @@ import json
 import secrets
 import shutil
 import subprocess
+import os
+from pathlib import Path
 from .store import Problem, uid
 
 SCOPES = {
@@ -18,7 +20,13 @@ SCOPES = {
 
 
 class Secrets:
-    """Linux Secret Service only. Refuse operation if keyring is unavailable."""
+    """Linux Secret Service or Windows user-bound DPAPI; never plaintext."""
+
+    def windows_path(self, ident):
+        from .paths import private_dir
+        from .platform_support import windows_home
+        directory = private_dir(private_dir(windows_home()) / "secrets")
+        return directory / (hashlib.sha256(ident.encode()).hexdigest() + ".dpapi")
 
     def run(self, args, value=None):
         if not shutil.which("secret-tool"):
@@ -32,12 +40,31 @@ class Secrets:
         return p.stdout.rstrip("\n")
 
     def put(self, ident, value):
+        if os.name == "nt":
+            import win32crypt
+            path = self.windows_path(ident)
+            temporary = path.with_suffix("." + secrets.token_hex(8) + ".tmp")
+            try:
+                temporary.write_bytes(win32crypt.CryptProtectData(value.encode(), "Alshival.Ai", None, None, None, 1))
+                temporary.replace(path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            return
         self.run(["store", "--label=Alshival.Ai", "application", "alshitasks", "id", ident], value)
 
     def get(self, ident):
+        if os.name == "nt":
+            import win32crypt
+            try:
+                return win32crypt.CryptUnprotectData(self.windows_path(ident).read_bytes(), None, None, None, 1)[1].decode()
+            except FileNotFoundError:
+                return ""
         return self.run(["lookup", "application", "alshitasks", "id", ident])
 
     def delete(self, ident):
+        if os.name == "nt":
+            self.windows_path(ident).unlink(missing_ok=True)
+            return
         self.run(["clear", "application", "alshitasks", "id", ident])
 
 

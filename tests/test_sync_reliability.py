@@ -1,4 +1,5 @@
 import copy
+import os
 import json
 import unittest
 import test_sync
@@ -212,7 +213,8 @@ class Reliability(unittest.TestCase):
         from pathlib import Path
 
         path = Path(row["identity_file"])
-        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        if os.name != "nt":
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(path.read_bytes(), secret)
         self.assertIn("Host alt-fixture", (self.s.paths.home / ".ssh/alshitasks.conf").read_text())
         self.assertEqual(self.s.db.execute("SELECT COUNT(*) FROM attachments").fetchone()[0], 0)

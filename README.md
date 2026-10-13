@@ -1,10 +1,20 @@
 # Alshival.Ai
 
-Standalone Linux desktop boards, notes, resources, logs and monitoring. No account, Docker, PostgreSQL server or cloud configuration is needed for local work. Ubuntu 26.04 amd64 is the initial target. Licensed Apache-2.0.
+Standalone Windows and Linux desktop boards, notes, resources, logs and monitoring. No account, Docker, PostgreSQL server or cloud configuration is needed for local work. Supports Windows 10/11 x64 and Ubuntu 26.04 amd64. Licensed Apache-2.0.
+
+## Windows
+
+Install `alshitasks_<version>_x64_setup.exe` from the GitHub release. It installs for the current user without administrator privileges and includes Python and its dependencies. Launch **Alshival.Ai** from Start. Upgrades and uninstall preserve local data in `%LOCALAPPDATA%\Alshival.Ai`.
+
+Closing the window keeps the app in the notification area and leaves its background service running. Settings controls startup at login, pause, restart and stop. Windows uses per-user ACLs, a random authenticated loopback endpoint, and user-bound DPAPI for saved credentials. Browser requests and unauthenticated local requests are rejected. Linux keeps Unix peer authentication, Secret Service and systemd.
+
+Use the MCP configuration shown in Settings; Windows supplies absolute paths to the bundled Python and CLI. For terminal commands, run `resources\alshitasks.cmd` inside the installation directory. Windows account connections use browser OAuth; managed Ubuntu enrollment remains Linux-only. SSH requires Windows OpenSSH Client.
+
+To build on Windows: install Node 22.19+ and Python 3.13, run `npm ci`, `python -m pip install -r service/windows-requirements.txt`, `npm run validate`, then `npm run package:windows`. Run `node scripts/windows-desktop-test.mjs` to exercise the packaged app with isolated data. Release CI tests both platforms before publishing either installer.
 
 ## Development
 
-Requires Node 22.19+, Python 3.12+, python3-jsonschema and a Linux desktop.
+Linux development requires Node 22.19+, Python 3.12+, python3-jsonschema and a Linux desktop.
 
 ```
 npm ci
@@ -45,7 +55,7 @@ Sign-in uses the fixed Alshival.Ai portal origin. No URL configuration is needed
 
 ### Automatic stable releases
 
-Every push to `main` builds and tests a Debian release. CI uses the package version when it exceeds all existing release versions; otherwise it allocates the next patch version. Generated package/lock versions stay in CI, and the immutable release points to the exact source commit. Rerunning an already published commit skips publication. Failed builds do not publish. Alshival machines install published releases through their system updater; open desktop windows load the new UI when reopened.
+Every push to `main` builds and tests Windows and Debian packages before publishing a release. CI uses the package version when it exceeds all existing release versions; otherwise it allocates the next patch version. Generated package/lock versions stay in CI, and the immutable release points to the exact source commit. Rerunning an already published commit skips publication. Failed builds do not publish. Alshival machines install published releases through their system updater; open desktop windows load the new UI when reopened.
 
 ### Default local-owner MCP access
 

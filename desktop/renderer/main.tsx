@@ -539,8 +539,8 @@ function App() {
                   Start at login minimized
                 </label>
                 <p>
-                  Start in the top bar without opening a window. Applies to your
-                  Ubuntu account on this computer.
+                  Start in the system tray without opening a window. Applies to your
+                  account on this computer.
                 </p>
               </section>
               <section>
@@ -866,11 +866,7 @@ function App() {
                 </p>
                 <pre>
                   {JSON.stringify(
-                    {
-                      mcpServers: {
-                        alshitasks: { command: "alshitasks", args: ["mcp"] },
-                      },
-                    },
+                    settings.mcp_config,
                     null,
                     2,
                   )}
@@ -1000,7 +996,7 @@ function App() {
                 </button>
                 <p>
                   Backups include task data, attachments and logs. Secrets are
-                  held separately in your login keyring.
+                  held separately in your operating system's protected credential storage.
                 </p>
               </section>
               <section>
@@ -1138,7 +1134,7 @@ function App() {
                       required
                     />
                   </label>
-                  <button>Save to login keyring</button>
+                  <button>Save credential securely</button>
                 </form>
               </section>
             </>
@@ -1215,6 +1211,7 @@ function ServiceStatus() {
   const [status, setStatus] = useState<{
     running: boolean;
     managed: boolean;
+    platform?: string;
   }>();
   const [error, setError] = useState("");
   const refresh = () =>
@@ -1235,6 +1232,7 @@ function ServiceStatus() {
             ? "Checking service…"
             : !status.running
               ? "Service stopped"
+              : status.platform === "win32" ? "Running in your Windows session · startup at login is controlled in Account"
               : status.managed
                 ? "Running · starts at login and continues after closing this window"
                 : "Running without systemd · automatic restart and startup at login are unavailable")}

@@ -26,6 +26,8 @@ def read_file(path, owner, private=False):
 
 
 def snapshot():
+    if os.name == 'nt':
+        return None
     path = ROOT / str(os.getuid())
     try:
         # Check every ancestor before opening; all are root-controlled.

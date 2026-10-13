@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -132,7 +133,7 @@ class Protocol(unittest.TestCase):
             )
             try:
                 for _ in range(100):
-                    if (Path(d) / "runtime/service.sock").exists():
+                    if (Path(d) / ("runtime/service.json" if os.name == "nt" else "runtime/service.sock")).exists():
                         break
                     time.sleep(0.05)
                 requests = [
@@ -205,7 +206,8 @@ class Protocol(unittest.TestCase):
                 self.assertEqual(results[5]["result"]["structuredContent"], {"items": [], "next_page": None})
                 log_tool = next(t for t in results[1]["result"]["tools"] if t["name"] == "logs_query")
                 self.assertIn("cursor", log_tool["inputSchema"]["properties"])
-                self.assertEqual((Path(d) / "runtime/service.sock").stat().st_mode & 0o777, 0o600)
+                if os.name != "nt":
+                    self.assertEqual((Path(d) / "runtime/service.sock").stat().st_mode & 0o777, 0o600)
                 # Default owner mode works without a desktop keyring and keeps revision checks.
                 write = requests[3]
                 write["params"]["arguments"]["data"]["title"] = "Local owner write"

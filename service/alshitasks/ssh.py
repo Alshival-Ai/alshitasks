@@ -3,6 +3,7 @@ import re
 import subprocess
 from pathlib import Path
 from .store import Problem
+from .platform_support import WINDOWS, owned, protect
 
 
 def configure(store, resource, body, home=None):
@@ -27,9 +28,9 @@ def configure(store, resource, body, home=None):
     identity = body.get("identity_file")
     if identity:
         p = Path(identity).expanduser()
-        if not p.is_file() or p.stat().st_uid != os.getuid() or any(x in str(p) for x in ("\n", "\r", '"')):
+        if not p.is_file() or not owned(p) or any(x in str(p) for x in ("\n", "\r", '"')):
             raise Problem("Choose an existing key owned by you")
-        identity = str(p.resolve())
+        identity = p.resolve().as_posix()
     else:
         if not body.get("agent"):
             raise Problem("Choose a local key or SSH agent")
@@ -39,7 +40,7 @@ def configure(store, resource, body, home=None):
         raise Problem("Refusing symlinked SSH configuration")
     # Evaluate OpenSSH configuration to catch explicit aliases, wildcards and Includes.
     resolved = subprocess.run(
-        ["ssh", "-F", str(config) if config.exists() else "/dev/null", "-G", alias],
+        ["ssh", "-F", str(config) if config.exists() else os.devnull, "-G", alias],
         capture_output=True,
         text=True,
         timeout=5,
@@ -64,12 +65,12 @@ def configure(store, resource, body, home=None):
         (resource, alias, host, user, port, identity, int(bool(body.get("agent")))),
     )
     render(store, managed)
-    include = 'Include "' + str(managed) + '"'
+    include = 'Include "' + managed.as_posix() + '"'
     if include not in current:
         temporary = config.with_name("config.alshitasks-next")
         with temporary.open("x") as f:
             f.write(include + "\n" + current)
-        temporary.chmod(0o600)
+        protect(temporary)
         temporary.replace(config)
     return {"alias": alias}
 
@@ -87,7 +88,7 @@ def render(store, path=None):
         raise Problem("SSH configuration write already pending", 409)
     with temporary.open("x") as f:
         f.write(content)
-    temporary.chmod(0o600)
+    protect(temporary)
     temporary.replace(path)
 
 
@@ -102,6 +103,10 @@ def open_terminal(store, resource):
     if not row:
         raise Problem("SSH alias unavailable", 404)
     import shutil
+
+    if WINDOWS:
+        subprocess.Popen(["ssh", row["alias"]], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        return {"opened": True}
 
     if not shutil.which("x-terminal-emulator"):
         raise Problem("Set a default terminal emulator first", 503)
@@ -119,7 +124,7 @@ def import_key(store, resource, source, body):
         raise Problem("SSH keys belong to resources")
     path = Path(source).expanduser()
     info = path.lstat()
-    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_size > 128 * 1024:
+    if not stat.S_ISREG(info.st_mode) or not owned(path) or info.st_size > 128 * 1024:
         raise Problem("Choose a private key file owned by you, up to 128 KiB")
     content = path.read_bytes()
     if not re.match(rb"-----BEGIN (?:OPENSSH |RSA |EC |DSA |ENCRYPTED )?PRIVATE KEY-----", content):
@@ -127,7 +132,7 @@ def import_key(store, resource, source, body):
     directory = private_dir(store.paths.config / "ssh-keys")
     destination = directory / uid()
     with destination.open("xb") as target:
-        os.chmod(destination, 0o600)
+        protect(destination)
         target.write(content)
     try:
         result = configure(store, resource, dict(body, identity_file=str(destination), agent=False))

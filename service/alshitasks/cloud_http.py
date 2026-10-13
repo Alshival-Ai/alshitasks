@@ -71,7 +71,7 @@ def read_raw(handler):
 
 
 def handle(handler):
-    from .server import UnixServer
+    from .server import local_owner
 
     api = handler.server.api
     request_id = str(uuid.uuid4())
@@ -80,16 +80,7 @@ def handle(handler):
     headers = {}
     handler.connection.settimeout(10)
     try:
-        owner = False
-        if isinstance(handler.server, UnixServer):
-            import os
-
-            _, uid, _ = struct.unpack(
-                "3i", handler.connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
-            )
-            owner = uid == os.getuid() and handler.headers.get("X-Alshival-Agent") != "1"
-            if uid != os.getuid():
-                raise Problem("Unix user mismatch", 403)
+        owner = local_owner(handler)
         if handler.headers.get("Origin") or handler.headers.get("Sec-Fetch-Site") in (
             "cross-site",
             "same-site",

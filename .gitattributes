@@ -1,4 +1,5 @@
 # Preserve upstream license text formatting verbatim.
+service/alshitasks/cloud_contract/* text eol=lf
 docs/DEPENDENCY_NOTICES.md whitespace=-trailing-space
 desktop/renderer/project-board/portal/public-sans-OFL.txt whitespace=-trailing-space
 desktop/assets/lato-OFL.txt -whitespace

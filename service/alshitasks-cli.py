@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 import argparse
-import fcntl
 import http.client
 import json
 import os
@@ -9,6 +8,7 @@ import sys
 from pathlib import Path
 from alshitasks.paths import Paths
 from alshitasks.store import Problem
+from alshitasks.platform_support import WINDOWS, lock_file
 
 
 class Connection(http.client.HTTPConnection):
@@ -23,8 +23,13 @@ class Connection(http.client.HTTPConnection):
 
 
 def call(paths, url, method="GET", body=None, token=None):
-    c = Connection(paths.socket)
     headers = {"Content-Type": "application/json"}
+    if WINDOWS:
+        endpoint = json.loads(paths.endpoint.read_text(encoding="utf-8"))
+        c = http.client.HTTPConnection("127.0.0.1", endpoint["port"], timeout=30)
+        headers["X-Alshival-Local"] = endpoint["token"]
+    else:
+        c = Connection(paths.socket)
     if token is not None:
         headers.update({"Authorization": "Bearer " + token, "X-Alshival-Agent": "1"})
     c.request(method, url, json.dumps(body) if body is not None else None, headers)
@@ -232,12 +237,17 @@ def main():
 
         with (paths.runtime / "service.lock").open("a") as lock:
             try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                lock_file(lock)
             except BlockingIOError:
                 raise Problem("Stop the service before restoring", 409)
             print(json.dumps(restore(paths, args.path)))
             return
     if args.command == "desktop":
+        if WINDOWS:
+            import subprocess
+            app = Path(__file__).resolve().parents[3] / "Alshival.Ai.exe"
+            subprocess.Popen([str(app)] + (["--notification", str(__import__("uuid").UUID(args.notification))] if args.notification else []))
+            return
         os.execv(
             "/usr/lib/alshitasks/electron/electron",
             ["alshitasks", "/usr/lib/alshitasks"]

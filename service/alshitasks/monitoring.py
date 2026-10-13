@@ -3,6 +3,7 @@ import urllib.error
 """Bounded local probes; configured execution never travels through task sync."""
 
 import importlib
+import os
 import json
 import socket
 import time
@@ -26,8 +27,10 @@ def probe(config, secrets=None):
 
             try:
                 result = subprocess.run(
-                    ["ping", "-n", "-c", "1", "-W", str(config.get("timeout", 8)), "--", config["host"]],
+                    (["ping", "-n", "1", "-w", str(int(config.get("timeout", 8) * 1000)), config["host"]]
+                     if os.name == "nt" else ["ping", "-n", "-c", "1", "-W", str(config.get("timeout", 8)), "--", config["host"]]),
                     capture_output=True,
+                    **({"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}),
                     timeout=config.get("timeout", 8) + 1,
                 )
                 return (

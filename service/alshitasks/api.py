@@ -4,6 +4,7 @@ from .store import Problem, now, uid
 from .security import authorize, grant_create, Secrets
 from . import files, monitoring, ssh
 from pathlib import Path
+from .platform_support import mcp_command
 
 
 def team_portal_url():
@@ -63,6 +64,9 @@ class API:
 
         if ROUTE.fullmatch(urlsplit(path).path):
             return cloud_dispatch(self, path, method, body, owner, token)
+        if path == "/v1/desktop-toasts" and method == "POST" and owner:
+            from .notifications import pending
+            return [{k: row[k] for k in ("id", "title", "body")} for row in pending(self.store)]
         if path.startswith("/v1/notifications"):
             from .notifications import request
 
@@ -121,7 +125,8 @@ class API:
         if path == "/v1/revision" and owner:
             return {"revision": s.db.total_changes}
         if path == "/v1/health":
-            return {"ok": True, "version": "0.1.4"}
+            package = Path(__file__).resolve().parents[2] / "package.json"
+            return {"ok": True, "version": json.loads(package.read_text())["version"]}
         if path.startswith("/v1/projects"):
             suffix = path[len("/v1/projects") :]
             parts = suffix.strip("/").split("/")
@@ -317,6 +322,7 @@ class API:
                 return {
                     "portal_url": team_portal_url(),
                     "local_members": s.setting("local_members", []),
+                    "mcp_config": {"mcpServers": {"alshitasks": mcp_command()}},
                     "paused": s.setting("paused", False),
                     "notification_toasts": s.setting("notification_toasts", True),
                     "http_port": s.setting("http_port", None),
@@ -514,7 +520,7 @@ class API:
                 "id": result["id"],
                 "config": {
                     "mcpServers": {
-                        "alshitasks": {"command": "alshitasks", "args": ["mcp", "--grant", result["id"]]}
+                        "alshitasks": mcp_command(result["id"])
                     }
                 },
             }

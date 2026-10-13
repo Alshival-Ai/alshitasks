@@ -1,0 +1,36 @@
+appId: ai.alshival.alshitasks
+productName: Alshival.Ai
+asar: false
+directories:
+  output: build/windows
+files:
+  - desktop/**/*
+  - dist/**/*
+  - service/**/*
+  - '!service/_vendor/**/*'
+  - '!**/__pycache__/**'
+  - contracts/**/*
+  - package.json
+  - LICENSE
+  - NOTICE
+  - '!node_modules/**/*'
+extraResources:
+  - from: build/windows-python
+    to: python
+  - from: scripts/alshitasks.cmd
+    to: alshitasks.cmd
+win:
+  target: nsis
+  executableName: Alshival.Ai
+  artifactName: alshitasks_${version}_x64_setup.exe
+  icon: desktop/assets/alshival-256x256.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  shortcutName: Alshival.Ai
+  runAfterFinish: false
+  include: scripts/windows-installer.nsh

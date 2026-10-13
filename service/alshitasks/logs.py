@@ -28,8 +28,11 @@ class Logs:
             if not backup_path.exists():
                 fd = os.open(backup_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                 os.close(fd)
-                with sqlite3.connect(backup_path) as backup:
+                backup = sqlite3.connect(backup_path)
+                try:
                     self.db.backup(backup)
+                finally:
+                    backup.close()
         with self.db:
             for column in ("received_at", "cloud_id", "source", "trace_id", "span_id", "transport"):
                 if column not in columns:

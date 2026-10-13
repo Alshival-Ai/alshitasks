@@ -1,4 +1,5 @@
-import fcntl
+import hmac
+import secrets
 import http.server
 import json
 import logging
@@ -14,12 +15,28 @@ from .store import Store, Problem
 from .logs import Logs
 from .api import API
 from . import monitoring
+from .platform_support import WINDOWS, lock_file
 
 MAX_BODY = 30 * 1024**2
 
 
-class UnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+class UnixServer(socketserver.ThreadingMixIn, getattr(socketserver, "UnixStreamServer", socketserver.TCPServer)):
     daemon_threads = True
+
+
+def local_owner(handler):
+    if isinstance(handler.server, UnixServer):
+        _, uid, _ = struct.unpack("3i", handler.connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        if uid != os.getuid():
+            raise Problem("Unix user mismatch", 403)
+        return handler.headers.get("X-Alshival-Agent") != "1"
+    expected = getattr(handler.server, "owner_token", None)
+    if expected is not None:
+        supplied = handler.headers.get("X-Alshival-Local", "")
+        if not hmac.compare_digest(supplied, expected):
+            raise Problem("Local authentication required", 401)
+        return handler.headers.get("X-Alshival-Agent") != "1"
+    return False
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -48,17 +65,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return handle(self)
         api = self.server.api
         try:
-            owner = False
-            if isinstance(self.server, UnixServer):
-                _, uid, _ = struct.unpack(
-                    "3i", self.connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
-                )
-                owner = uid == os.getuid()
-                if not owner:
-                    raise Problem("Unix user mismatch", 403)
-                # Agent traffic carries its own scoped credential even on the owner socket.
-                if self.headers.get("X-Alshival-Agent") == "1":
-                    owner = False
+            owner = local_owner(self)
             if self.headers.get("Origin") or self.headers.get("Sec-Fetch-Site") in (
                 "cross-site",
                 "same-site",
@@ -146,7 +153,7 @@ def run(root=None):
     paths = Paths(root)
     lock = (paths.runtime / "service.lock").open("a")
     try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_file(lock)
     except BlockingIOError:
         raise SystemExit("Alshival.Ai service already running for this user")
     if paths.socket.exists():
@@ -155,9 +162,15 @@ def run(root=None):
     logs = Logs(paths)
     api = API(store, logs)
     stop = threading.Event()
-    unix = UnixServer(str(paths.socket), Handler)
+    unix = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler) if WINDOWS else UnixServer(str(paths.socket), Handler)
     unix.api = api
-    paths.socket.chmod(0o600)
+    if WINDOWS:
+        unix.owner_token = secrets.token_urlsafe(48)
+        temporary = paths.endpoint.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"port": unix.server_port, "token": unix.owner_token, "pid": os.getpid()}), encoding="utf-8")
+        temporary.replace(paths.endpoint)
+    else:
+        paths.socket.chmod(0o600)
     servers = [unix]
     port = store.setting("http_port", None)
     if port:
@@ -179,5 +192,6 @@ def run(root=None):
         server.shutdown()
         server.server_close()
     paths.socket.unlink(missing_ok=True)
+    paths.endpoint.unlink(missing_ok=True)
     logs.db.close()
     store.db.close()

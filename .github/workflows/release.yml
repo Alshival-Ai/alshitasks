@@ -1,4 +1,4 @@
-name: Publish stable Debian release
+name: Publish stable Windows and Linux release
 on:
   push:
     branches: [main]
@@ -6,11 +6,14 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: stable-debian-release
+  group: stable-desktop-release
   cancel-in-progress: false
 jobs:
-  release:
+  linux:
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      publish: ${{ steps.version.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -63,12 +66,65 @@ jobs:
             /tmp/alshitasks-task-board-failure.png
             /tmp/alshitasks-task-board-trace.zip
           if-no-files-found: ignore
-      - name: Publish immutable version
+      - uses: actions/upload-artifact@v4
         if: steps.version.outputs.publish == 'true'
+        with:
+          name: linux-package
+          path: build/*.deb
+  windows:
+    needs: linux
+    if: needs.linux.outputs.publish == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Build and test Windows
+        env:
+          VERSION: ${{ needs.linux.outputs.version }}
+        run: |
+          npm version $env:VERSION --no-git-tag-version --allow-same-version
+          npm ci
+          python -m pip install -r service/windows-requirements.txt
+          npm run validate
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run package:windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/windows-desktop-test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: build/windows/*_setup.exe
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-diagnostics
+          path: build/windows-desktop.png
+          if-no-files-found: ignore
+  release:
+    needs: [linux, windows]
+    if: needs.linux.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-package'
+          merge-multiple: true
+          path: build
+      - name: Publish immutable version after both platforms pass
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.value }}
+          VERSION: ${{ needs.linux.outputs.version }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "v$VERSION" "build/alshitasks_${VERSION}_amd64.deb" build/SHA256SUMS \
+          cd build
+          sha256sum *.deb *.exe > SHA256SUMS
+          gh release create "v$VERSION" "alshitasks_${VERSION}_amd64.deb" "alshitasks_${VERSION}_x64_setup.exe" SHA256SUMS \
             --target "$GITHUB_SHA" --title "Alshival.Ai $VERSION" \
-            --notes "Stable Ubuntu amd64 desktop package. Install with apt install ./alshitasks_${VERSION}_amd64.deb. Existing per-user data is retained. Relaunch the app to use updated desktop code."
+            --notes "Windows x64 installer and Ubuntu amd64 package. Windows includes its own Python runtime. Existing per-user data is retained on upgrades. Relaunch the app to load updated desktop code."

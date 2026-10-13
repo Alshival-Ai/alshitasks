@@ -3,6 +3,7 @@
 import subprocess
 import threading
 import time
+import os
 from . import notifications
 
 
@@ -90,14 +91,14 @@ def inbox_worker(api, stop):
                 next_poll = time.time() + 2
                 poller = threading.Thread(target=notifications.sync_portal, args=(api.store,), daemon=True)
                 poller.start()
-            if native is None and time.time() >= retry and api.store.paths.managed:
+            if native is None and time.time() >= retry and api.store.paths.managed and os.name != "nt":
                 try:
                     native = NativeNotifications()
                 except Exception:
                     retry = time.time() + 60
             if time.time() >= next_cleanup:
                 next_cleanup = time.time() + 60
-                if native is None:
+                if native is None and os.name != "nt":
                     for row in notifications.pending(api.store):
                         with api.store.tx():
                             api.store.db.execute(

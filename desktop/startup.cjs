@@ -18,6 +18,10 @@ function readEntry() {
   }
 }
 function getStartup() {
+  if (process.platform === "win32") {
+    const { app } = require("electron");
+    return { enabled: app.getLoginItemSettings({ path: process.execPath, args: ["--start-in-tray"] }).openAtLogin };
+  }
   const text = readEntry();
   return {
     enabled:
@@ -32,6 +36,11 @@ function getStartup() {
 function setStartup(enabled) {
   if (typeof enabled !== "boolean")
     throw new Error("Invalid startup preference");
+  if (process.platform === "win32") {
+    const { app } = require("electron");
+    app.setLoginItemSettings({ openAtLogin: enabled, path: process.execPath, args: ["--start-in-tray"] });
+    return getStartup();
+  }
   const text = readEntry();
   if (text && !text.split(/\r?\n/).includes(marker))
     throw new Error(

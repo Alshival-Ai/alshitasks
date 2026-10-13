@@ -1,5 +1,6 @@
 """Outbound SSE hints, isolated from durable checkpoint-based graph delivery."""
 import json
+import os
 import random
 import socket
 import threading
@@ -32,6 +33,10 @@ class ListenerStop(threading.Event):
         if sock is not None:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
+                if os.name == 'nt':
+                    # Winsock's timeout select can remain blocked after shutdown.
+                    # Detach prevents a later buffered close from closing a reused handle.
+                    socket.close(sock.detach())
             except OSError:
                 pass
 
