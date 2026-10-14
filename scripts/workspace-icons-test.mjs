@@ -19,7 +19,9 @@ try {
     env: { ...process.env, ALSHITASKS_TEST_ROOT: root },
   });
   const page = await app.firstWindow();
-  await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setSize(1024,768));
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(1024, 768),
+  );
   await page.getByRole("button", { name: /New task/ }).waitFor();
   const menu = page.locator(".wd-header-menu").first();
   await menu.getByRole("button", { name: "Settings", exact: true }).click();
@@ -54,7 +56,10 @@ try {
     .waitFor();
   await page.keyboard.press("Escape");
   assert.ok(await bell.evaluate((el) => el === document.activeElement));
-  await page.getByRole('button', {name:'Workspaces',exact:true}).first().click();
+  await page
+    .getByRole("button", { name: "Workspaces", exact: true })
+    .first()
+    .click();
   await page
     .getByRole("button", { name: "Settings for Local workspace", exact: true })
     .first()
@@ -105,7 +110,10 @@ try {
     .locator('.wd-nav-list .workspace-icon use[href$="#rocket"]')
     .waitFor({ state: "attached" });
   await page.getByRole("button", { name: "Expand menu", exact: true }).click();
-  await page.getByRole('button', {name:'Workspaces',exact:true}).first().click();
+  await page
+    .getByRole("button", { name: "Workspaces", exact: true })
+    .first()
+    .click();
   await page
     .getByRole("button", { name: "Settings for Local workspace", exact: true })
     .first()
@@ -123,22 +131,93 @@ try {
   await page.screenshot({
     path: path.join(os.tmpdir(), "workspace-icon-picker.png"),
   });
-  await dialog.locator('input[type=color]').fill('#123abc');
-  await dialog.getByRole('button', {name:'Save workspace icon',exact:true}).click();
-  await dialog.getByText('Workspace icon saved.', {exact:true}).waitFor();
-  await dialog.getByRole('button', {name:'Reset to default',exact:true}).click();
-  assert.notEqual(await dialog.locator('input[type=color]').inputValue(), '#123abc');
-  await dialog.getByRole('button', {name:'Save workspace icon',exact:true}).click();
-  await dialog.getByText('Workspace icon saved.', {exact:true}).waitFor();
-  await dialog.getByRole('button', {name:'Close',exact:true}).click();
-  await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setSize(900,650));
+  for (const theme of ["Light", "Dark", "System"]) {
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await page.getByRole("radio", { name: theme, exact: true }).click();
+    await page
+      .getByRole("button", {
+        name: "Settings for Local workspace",
+        exact: true,
+      })
+      .first()
+      .click();
+    await dialog.getByRole("radio", { name: "Rocket", exact: true }).waitFor();
+    const dark = await page.evaluate(
+      () => document.documentElement.dataset.theme === "dark",
+    );
+    assert.equal(
+      await dialog.evaluate((el) => getComputedStyle(el).backgroundColor),
+      dark ? "rgb(0, 0, 0)" : "rgb(246, 244, 239)",
+    );
+    assert.equal(
+      await dialog
+        .locator(".taxonomy-settings select")
+        .first()
+        .evaluate((el) => getComputedStyle(el).backgroundColor),
+      dark ? "rgb(0, 0, 0)" : "rgb(246, 244, 239)",
+    );
+    await page.screenshot({
+      path: path.join(os.tmpdir(), `workspace-settings-${theme}.png`),
+    });
+  }
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(760, 650),
+  );
+  assert.ok(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth));
+  await dialog
+    .locator(".workspace-settings-content")
+    .evaluate((el) => (el.scrollTop = el.scrollHeight));
+  assert.ok(
+    await dialog
+      .getByRole("button", { name: "Close", exact: true })
+      .isVisible(),
+  );
+  await page.screenshot({
+    path: path.join(os.tmpdir(), "workspace-settings-narrow.png"),
+  });
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(1024, 768),
+  );
+  await dialog.locator("input[type=color]").fill("#123abc");
+  await dialog
+    .getByRole("button", { name: "Save workspace icon", exact: true })
+    .click();
+  await dialog.getByText("Workspace icon saved.", { exact: true }).waitFor();
+  await dialog
+    .getByRole("button", { name: "Reset to default", exact: true })
+    .click();
+  assert.notEqual(
+    await dialog.locator("input[type=color]").inputValue(),
+    "#123abc",
+  );
+  await dialog
+    .getByRole("button", { name: "Save workspace icon", exact: true })
+    .click();
+  await dialog.getByText("Workspace icon saved.", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows()[0].setSize(900, 650),
+  );
   await bell.click();
-  const notificationBox = await page.getByRole('dialog', {name:'Notifications',exact:true}).boundingBox();
-  const viewport = await page.evaluate(() => ({width:innerWidth,height:innerHeight}));
-  assert.ok(notificationBox.x >= 0 && notificationBox.x + notificationBox.width <= viewport.width);
-  assert.ok(notificationBox.y >= 0 && notificationBox.y + notificationBox.height <= viewport.height);
-  await page.getByRole('button', {name:'Close notifications',exact:true}).click();
-  assert.ok(await bell.evaluate(el=>el===document.activeElement));
+  const notificationBox = await page
+    .getByRole("dialog", { name: "Notifications", exact: true })
+    .boundingBox();
+  const viewport = await page.evaluate(() => ({
+    width: innerWidth,
+    height: innerHeight,
+  }));
+  assert.ok(
+    notificationBox.x >= 0 &&
+      notificationBox.x + notificationBox.width <= viewport.width,
+  );
+  assert.ok(
+    notificationBox.y >= 0 &&
+      notificationBox.y + notificationBox.height <= viewport.height,
+  );
+  await page
+    .getByRole("button", { name: "Close notifications", exact: true })
+    .click();
+  assert.ok(await bell.evaluate((el) => el === document.activeElement));
   console.log(
     "PASS: workspace icon picker, save, restart persistence, collapsed navigation and light/dark rendering.",
   );

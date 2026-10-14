@@ -2,6 +2,14 @@
 
 Standalone Windows and Linux desktop boards, notes, resources, logs and monitoring. No account, Docker, PostgreSQL server or cloud configuration is needed for local work. Supports Windows 10/11 x64 and Ubuntu 26.04 amd64. Licensed Apache-2.0.
 
+Workspace icons and colors are bundled and saved locally, including for synced
+workspaces. Settings work offline. Authorized shared edits synchronize in the
+background; portal outages never block local saves or task and note sync.
+Users without workspace management permission can customize their device's icon.
+These personal choices stay local until explicitly shared with **Sync to workspace**.
+Concurrent portal edits are preserved for review in workspace settings, with
+options to use the portal icon, keep the local choice, or sync it when permitted.
+
 ## Assistant plugins
 
 Use **Alshival Local** to connect a desktop assistant to this app without a portal

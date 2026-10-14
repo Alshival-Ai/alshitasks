@@ -119,6 +119,8 @@ def discover(store, transport=None):
                     store.db.execute("UPDATE connections SET state='connected' WHERE id=?", (ident,))
                 store.set_setting("credential:" + ident, account["connection"])
                 from .workspace_art import appearance
+                from .workspace_icons import receive
+                receive(store, ident, w)
                 store.set_setting("workspace:" + ident, dict(w, **appearance(w['id'], w.get('icon'), w.get('icon_color'))))
                 seen.add(ident)
             for r in store.db.execute(

@@ -7,7 +7,7 @@ LOCAL = "00000000-0000-4000-8000-000000000001"
 
 
 def catalog(store):
-    from .workspace_icons import local_selection
+    from .workspace_icons import local_selection, selection
     from .workspace_art import appearance
     local_art = local_selection(store)
     account = store.setting("active_account") or store.setting("last_account")
@@ -43,7 +43,8 @@ def catalog(store):
                 "id": r["workspace"],
                 "connection_id": r["id"],
                 "name": meta.get("name", r["workspace"]),
-                **appearance(r['workspace'], meta.get('icon'), meta.get('icon_color')),
+                **{key: selection(store, r['id'])[key] for key in ('icon', 'icon_color')},
+                "icon_sync": selection(store, r['id'])['sync_state'],
                 "local": False,
                 "kind": meta.get("kind", "customer"),
                 "unread": meta.get("unread"),

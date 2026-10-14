@@ -51,7 +51,7 @@ class Workspaces(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         self.assertEqual((root/'desktop/renderer/workspace-icons.json').read_bytes(), (root/'service/alshitasks/assets/workspace-icons.json').read_bytes())
 
-    def test_workspace_icons_local_persistence_validation_and_shared_proxy(self):
+    def test_workspace_icons_local_persistence_validation_and_shared_offline(self):
         local = '/v1/workspaces/icon?workspace_id='+LOCAL
         def call(path, method='GET', body=None):
             with self.s.tx():
@@ -63,14 +63,13 @@ class Workspaces(unittest.TestCase):
         with self.assertRaises(Problem):call(local,'POST',{'icon':'leaf','revision':0})
         with self.assertRaises(Problem):call(local,'POST',{'icon':'../file','revision':1})
         path = '/v1/workspaces/icon?workspace_id='+self.remote[0]['id']
-        with patch('alshitasks.portal.Portal.token', return_value='fixture'), patch('alshitasks.portal.remote', return_value={'icon':'leaf','revision':2,'can_manage':True}) as remote:
-            self.assertEqual(call(path,'POST',{'icon':'leaf','revision':1})['icon'],'leaf')
-            self.assertEqual(remote.call_args.args[1], '/desktop/v1/workspaces/'+self.remote[0]['id']+'/icon')
+        with patch('alshitasks.portal.remote', side_effect=AssertionError('Icon settings must be local')):
+            self.assertEqual(call(path,'POST',{'icon':'leaf','revision':call(path)['revision']})['icon'],'leaf')
         rows=call('/v1/workspaces')['workspaces']
         self.assertEqual(next(w for w in rows if w['id']==self.remote[0]['id'])['icon'],'leaf')
         with self.s.tx():self.s.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (self.ids[0],))
-        self.assertFalse(call(path)['can_manage'])
-        with self.assertRaises(Problem):call(path,'POST',{'icon':'home','revision':2})
+        self.assertTrue(call(path)['can_manage'])
+        self.assertEqual(call(path,'POST',{'icon':'home','revision':call(path)['revision']})['icon'], 'home')
 
     def test_icon_color_persistence_reset_and_legacy_update(self):
         from alshitasks.workspace_art import defaults, ICON_IDS, COLORS

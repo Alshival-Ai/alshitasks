@@ -3,6 +3,7 @@ import { TaxonomySettings } from "./project-board/Taxonomy";
 import { WorkspaceBoards } from "./WorkspaceBoards";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import "./project-board/portal/workspace-directory.css";
+import "./workspace-settings.css";
 export type Workspace = {
   id: string;
   name: string;
@@ -74,7 +75,8 @@ export function WorkspaceCog({ workspace }: { workspace: Workspace }) {
       </button>
       <dialog
         ref={dialog}
-        className="taxonomy-dialog"
+        className="taxonomy-dialog workspace-settings-dialog"
+        aria-label={`${workspace.name} settings`}
         onClose={() => setOpen(false)}
       >
         <header>
@@ -86,24 +88,26 @@ export function WorkspaceCog({ workspace }: { workspace: Workspace }) {
             Close
           </button>
         </header>
-        {open && (
-          <WorkspaceIconSettings
-            workspace={workspace.id}
-            name={workspace.name}
-          />
-        )}
-        <p>Types and labels are shared by every board in this workspace.</p>
-        {open && <TaxonomySettings workspace={workspace.id} />}
-        {workspace.settings_url && (
-          <p>
-            <button
-              className="button btn-frost"
-              onClick={() => workspaceSettings(workspace)}
-            >
-              Other portal settings
-            </button>
-          </p>
-        )}
+        <div className="workspace-settings-content">
+          {open && (
+            <WorkspaceIconSettings
+              workspace={workspace.id}
+              name={workspace.name}
+            />
+          )}
+          <p>Types and labels are shared by every board in this workspace.</p>
+          {open && <TaxonomySettings workspace={workspace.id} />}
+          {workspace.settings_url && (
+            <p>
+              <button
+                className="button btn-frost"
+                onClick={() => workspaceSettings(workspace)}
+              >
+                Other portal settings
+              </button>
+            </p>
+          )}
+        </div>
       </dialog>
     </>
   );

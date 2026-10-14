@@ -1,0 +1,134 @@
+.native-workspaces .workspace-settings-dialog {
+  --hub-surface: var(--paper, var(--app-paper));
+  --hub-text: var(--ink, var(--app-ink));
+  --hub-muted: var(--muted, var(--app-muted));
+  --hub-border: var(--line, #7775);
+  background: var(--hub-surface);
+  color: var(--hub-text);
+  padding: 0;
+  width: min(800px, calc(100vw - 32px));
+  max-height: calc(100dvh - 64px);
+  overflow: hidden;
+  border: 1px solid var(--hub-border);
+  box-shadow: 0 24px 80px #0005;
+}
+.workspace-settings-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+.native-workspaces .workspace-settings-dialog form {
+  max-width: none;
+}
+:root
+  .native-workspaces
+  .workspace-settings-dialog
+  :is(input, select, option, optgroup) {
+  background: var(--hub-surface);
+  color: var(--hub-text);
+  border-color: var(--hub-border);
+}
+.native-workspaces .workspace-settings-dialog .workspace-color-picker label {
+  flex-direction: row;
+}
+.native-workspaces .workspace-settings-dialog .workspace-color-swatches button {
+  border-radius: 50%;
+  margin: 0;
+}
+.workspace-settings-dialog > header {
+  flex: none;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--hub-border);
+}
+.workspace-settings-dialog h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.workspace-settings-dialog .workspace-settings-content {
+  padding: 24px;
+  overflow: auto;
+  min-height: 0;
+}
+.workspace-settings-dialog .workspace-icon-settings {
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--hub-border);
+}
+.workspace-settings-dialog .workspace-icon-settings h3 {
+  margin-top: 0;
+}
+.workspace-settings-dialog .workspace-icon-settings form {
+  display: block;
+  width: 100%;
+}
+.workspace-settings-dialog .taxonomy-create {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+}
+.workspace-settings-dialog .taxonomy-row {
+  align-items: center;
+}
+.workspace-settings-dialog .taxonomy-row input {
+  flex: 1 1 140px;
+  width: 140px;
+}
+.workspace-settings-dialog .taxonomy-row select {
+  flex: 1 1 120px;
+  width: 120px;
+}
+.workspace-settings-dialog .taxonomy-create input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.native-workspaces .workspace-settings-dialog button {
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  min-height: 36px;
+  border: 1px solid var(--hub-border);
+  border-radius: 8px;
+  color: inherit;
+  background: color-mix(in srgb, var(--hub-text) 6%, var(--hub-surface));
+  cursor: pointer;
+}
+.workspace-settings-dialog button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--hub-text) 12%, var(--hub-surface));
+}
+.workspace-settings-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.workspace-settings-dialog :focus-visible {
+  outline: 2px solid var(--matrix-color-b, #8058dd);
+  outline-offset: 3px;
+}
+.workspace-settings-dialog .workspace-icon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+.workspace-settings-dialog .workspace-icon-sync {
+  color: var(--hub-muted);
+  font-size: 13px;
+}
+.workspace-settings-dialog .workspace-color-swatches button {
+  padding: 0;
+  min-height: 0;
+}
+.workspace-settings-dialog .workspace-icon-picker label {
+  color: var(--hub-text);
+}
+@media (max-width: 600px) {
+  .workspace-settings-dialog > header,
+  .workspace-settings-dialog .workspace-settings-content {
+    padding: 16px;
+  }
+  .workspace-settings-dialog .taxonomy-row {
+    gap: 6px;
+  }
+  .workspace-settings-dialog .taxonomy-row button {
+    flex: 1 0 auto;
+  }
+}

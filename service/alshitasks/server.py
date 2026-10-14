@@ -182,8 +182,9 @@ def run(root=None):
     from .sync_worker import graph_loop, file_loop, notification_loop
 
     from .notifier import inbox_worker
+    from .workspace_icons import icon_loop
 
-    for worker in (background, graph_loop, file_loop, notification_loop, inbox_worker):
+    for worker in (background, graph_loop, file_loop, notification_loop, inbox_worker, icon_loop):
         threading.Thread(target=supervise, args=(api, stop, worker), daemon=True, name=worker.__name__).start()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())
