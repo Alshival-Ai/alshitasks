@@ -33,7 +33,10 @@ class ServerTests(unittest.TestCase):
         self.password = 'fixture-only-password-123'
         self.auth.password(self.password)
         self.origin = 'http://127.0.0.1:43120'
-        self.client = TestClient(create_app(self.api, self.origin), base_url=self.origin)
+        self.assets = Path(self.temp.name) / 'assets'
+        self.assets.mkdir()
+        (self.assets / 'index.html').write_text('<!doctype html><title>Server fixture</title>')
+        self.client = TestClient(create_app(self.api, self.origin, self.assets), base_url=self.origin)
 
     def tearDown(self):
         self.client.close()
