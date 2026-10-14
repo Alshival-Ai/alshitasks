@@ -512,7 +512,7 @@ try {
   });
   const nav = page.locator('.app-sidebar .wd-nav-list');
   assert.equal(await nav.getByRole('button', {name:'Local workspace',exact:true}).count(),1);
-  const openSettings = async()=>{await page.getByRole('button',{name:'Account',exact:true}).click();await page.getByRole('button',{name:'Device settings',exact:true}).click();};
+  const openSettings = async()=>{await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Device settings',exact:true}).click();};
   // Navigation now defaults to expanded; exercise both transitions explicitly.
   if (await page.getByRole("button", { name: "Collapse menu", exact: true }).count())
     await page.getByRole("button", { name: "Collapse menu", exact: true }).click();

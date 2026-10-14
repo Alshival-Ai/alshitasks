@@ -76,7 +76,7 @@ try {
   assert.deepEqual(await page.evaluate(() => window.tasks.getStartup()), {
     enabled: false,
   });
-  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("button", { name: "Device settings", exact: true })
     .click();
