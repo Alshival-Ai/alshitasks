@@ -8,7 +8,8 @@ import assert from "node:assert/strict";
 import net from "node:net";
 let server, browser, temporary;
 const python = process.env.ALSHITASKS_TEST_PYTHON || (process.platform === "win32" ? "python" : "python3");
-const remote = process.env.ALSHITASKS_TEST_URL;
+// Never adopt an existing server or a user's workspace for public screenshots.
+const remote = undefined;
 const port = remote ? Number(new URL(remote).port || 443) : await new Promise((resolve, reject) => {
   const probe = net.createServer(); probe.on('error', reject);
   probe.listen(0, '127.0.0.1', () => { const selected = probe.address().port; probe.close(() => resolve(selected)); });
