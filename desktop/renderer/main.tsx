@@ -117,6 +117,7 @@ function App() {
   }, [narrow, expanded]);
 
   const [localBoards, setLocalBoards] = useState<Item[]>([]);
+  const [portalError, setPortalError] = useState("");
   const [publications, setPublications] = useState<any[]>([]);
   const [publishBoard, setPublishBoard] = useState(LOCAL_WORKSPACE);
   const [publishWorkspace, setPublishWorkspace] = useState("");
@@ -236,13 +237,12 @@ function App() {
     }
     setItems(all);
     setSettings(await api("/v1/settings"));
-    const info = await api("/v1/portal/account");
+    setWorkspaces(visibleWorkspaces);
     setLocalBoards(
       (await api("/v1/projects/boards?workspace_id=" + LOCAL_WORKSPACE)).boards,
     );
-    setPublications((await api("/v1/portal/publish")).publications);
-    setAccountInfo(info);
-    setWorkspaces(visibleWorkspaces);
+    void api("/v1/portal/account").then(setAccountInfo).catch(() => setPortalError("Account status is temporarily unavailable."));
+    void api("/v1/portal/publish").then((r) => { setPublications(r.publications); setPortalError(""); }).catch(() => setPortalError("Publication history is temporarily unavailable."));
     setGrants((await api("/v1/projects/keys")).keys);
     setConflicts((await api("/v1/conflicts")).conflicts);
     setDrafts((await api("/v1/drafts")).drafts);
@@ -553,9 +553,7 @@ function App() {
               ))}
           </HeaderMenu>
           <span className="local-label">
-            {settings.paused
-              ? "Background paused"
-              : workspace === LOCAL_WORKSPACE
+            {workspace === LOCAL_WORKSPACE
                 ? "On this computer"
                 : syncLabel(workspaces.find((w) => w.id === workspace))}
           </span>
@@ -919,6 +917,7 @@ function App() {
                     </form>
                   </section>
                 )}
+                {portalError && <p role="status">{portalError}</p>}
                 {publications.map((j) => (
                   <p key={j.id}>
                     Board publication: {j.state}
@@ -1089,17 +1088,7 @@ function App() {
                 <p>
                   Closing the window leaves the service running after setup.
                 </p>
-                <button
-                  onClick={() =>
-                    void work(() =>
-                      api("/v1/settings", "PATCH", {
-                        paused: !settings.paused,
-                      }),
-                    )
-                  }
-                >
-                  {settings.paused ? "Resume" : "Pause"} background work
-                </button>
+                {settings.pause_migration && <p>{settings.pause_migration}</p>}
                 <button
                   onClick={() => void work(() => window.tasks.service("stop"))}
                 >

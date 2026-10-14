@@ -126,17 +126,17 @@ class CloudLogs(unittest.TestCase):
             monitoring.queue_forward(
                 self.s, self.resource, [{"id": uid(), "message": "sent", "severity": "info"}]
             )
-            secrets = MagicMock()
-            secrets.get.return_value = "fixture-token"
-            response = MagicMock()
-            response.__enter__.return_value.status = 200
-            with patch("urllib.request.build_opener") as opener:
-                opener.return_value.open.return_value = response
-                monitoring.forward_once(self.s, secrets)
-                request = opener.return_value.open.call_args.args[0]
-                self.assertEqual(json.loads(request.data)["events"][0]["severity"], "INFO")
-            self.assertEqual(self.s.db.execute("SELECT count(*) FROM forward_queue").fetchone()[0], 0)
-            self.assertEqual(self.s.setting("forward_status:" + target)["state"], "connected")
+        secrets = MagicMock()
+        secrets.get.return_value = "fixture-token"
+        response = MagicMock()
+        response.__enter__.return_value.status = 200
+        with patch("urllib.request.build_opener") as opener:
+            opener.return_value.open.return_value = response
+            monitoring.forward_once(self.s, secrets)
+            request = opener.return_value.open.call_args.args[0]
+            self.assertEqual(json.loads(request.data)["events"][0]["severity"], "INFO")
+        self.assertEqual(self.s.db.execute("SELECT count(*) FROM forward_queue").fetchone()[0], 0)
+        self.assertEqual(self.s.setting("forward_status:" + target)["state"], "connected")
 
     def test_json_gzip_chunked_fields_queries_and_cursor(self):
         events = [

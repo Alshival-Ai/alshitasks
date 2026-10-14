@@ -15,6 +15,13 @@ from alshitasks.store import Problem
 
 
 class OAuthReconnect(unittest.TestCase):
+    def setUp(self):
+        # These unit tests exercise credential receipts; account fences have
+        # dedicated Store-backed concurrency coverage in test_optional_portal.
+        self.fence = patch('alshitasks.eligibility.check')
+        self.fence.start()
+        self.addCleanup(self.fence.stop)
+
     def request_error(self, status, body, route="/oauth/token/"):
         error = urllib.error.HTTPError("https://fixture.example" + route, status, "error", {}, io.BytesIO(body))
         opener = Mock()
@@ -53,7 +60,7 @@ class OAuthReconnect(unittest.TestCase):
         ):
             for _ in range(3):
                 with self.assertRaises(Problem) as caught:
-                    Portal(None)._token(connection, 'credential')
+                    Portal(None)._token(connection, 'credential', 0)
                 self.assertEqual(caught.exception.status, 401)
             self.assertEqual(transport.call_count, 1)
         self.assertTrue(json.loads(values['credential'])['reauthorization_required'])
@@ -62,7 +69,7 @@ class OAuthReconnect(unittest.TestCase):
         value = json.dumps({'access_token': 'expired', 'refresh_token': 'valid', 'client_id': 'fixture', 'expires_at': 0})
         with patch.object(Secrets, 'get', return_value=value), patch.object(Secrets, 'put') as save, patch('alshitasks.portal.remote', side_effect=Problem('Unavailable', 503)):
             with self.assertRaises(Problem):
-                Portal(None)._token({'state': 'connected', 'origin': 'https://fixture.example'}, 'credential')
+                Portal(None)._token({'state': 'connected', 'origin': 'https://fixture.example'}, 'credential', 0)
             self.assertEqual(save.call_count, 1)
             pending = json.loads(save.call_args.args[1])
             self.assertIn('desktop_refresh_id', pending)
@@ -74,10 +81,10 @@ class OAuthReconnect(unittest.TestCase):
         with patch.object(Secrets, 'get', side_effect=lambda key: values[key]), patch.object(Secrets, 'put', side_effect=lambda key, value: values.update({key: value})), patch('alshitasks.portal.remote') as transport:
             transport.side_effect = [Problem('Lost response', 503), {'access_token': 'new', 'refresh_token': 'rotated', 'expires_in': 900}]
             with self.assertRaises(Problem):
-                Portal(None)._token(connection, 'credential')
+                Portal(None)._token(connection, 'credential', 0)
             first = transport.call_args.kwargs['body'].copy()
             self.assertEqual(json.loads(values['credential'])['desktop_refresh_id'], first['desktop_refresh_id'])
-            self.assertEqual(Portal(None)._token(connection, 'credential'), 'new')
+            self.assertEqual(Portal(None)._token(connection, 'credential', 0), 'new')
             self.assertEqual(transport.call_args.kwargs['body'], first)
             self.assertNotIn('desktop_refresh_id', json.loads(values['credential']))
 
@@ -97,8 +104,8 @@ class OAuthReconnect(unittest.TestCase):
             ]
             connection = {'state': 'connected', 'origin': 'https://fixture.example'}
             with self.assertRaises(OSError):
-                Portal(None)._token(connection, 'credential')
-            self.assertEqual(Portal(None)._token(connection, 'credential'), 'current')
+                Portal(None)._token(connection, 'credential', 0)
+            self.assertEqual(Portal(None)._token(connection, 'credential', 0), 'current')
             bodies = [call.kwargs['body'] for call in transport.call_args_list]
             self.assertEqual(bodies[0], bodies[1])
             self.assertNotEqual(bodies[1]['desktop_refresh_id'], bodies[2]['desktop_refresh_id'])
@@ -108,7 +115,7 @@ class OAuthReconnect(unittest.TestCase):
         value = json.dumps({'access_token': 'expired', 'refresh_token': 'old', 'client_id': 'fixture', 'expires_at': 0})
         with patch.object(Secrets, 'get', return_value=value), patch.object(Secrets, 'put', side_effect=OSError('Disk unavailable')), patch('alshitasks.portal.remote') as transport:
             with self.assertRaises(OSError):
-                Portal(None)._token({'state': 'connected', 'origin': 'https://fixture.example'}, 'credential')
+                Portal(None)._token({'state': 'connected', 'origin': 'https://fixture.example'}, 'credential', 0)
             transport.assert_not_called()
 
     def test_reconnect_keeps_identity_and_rejects_another_account(self):
@@ -134,8 +141,7 @@ class OAuthReconnect(unittest.TestCase):
                     return {'resource': origin + '/desktop/v1', 'account_id': owner}
                 try:
                     with patch.object(Secrets, 'put', side_effect=lambda key, value: values.update({key: value})), patch.object(Secrets, 'delete', side_effect=lambda key: values.pop(key, None)), patch('alshitasks.portal.remote', side_effect=transport):
-                        with store.tx():
-                            result = Portal(store).connect(origin)
+                        result = Portal(store).connect(origin)
                         query = parse_qs(urlsplit(result['url']).query)
                         callback = query['redirect_uri'][0] + '?' + urlencode({'state': query['state'][0], 'iss': origin, 'code': 'fixture-code'})
                         if owner == 'existing':

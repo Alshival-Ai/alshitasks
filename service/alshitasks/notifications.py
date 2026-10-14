@@ -28,6 +28,10 @@ def migrate(s):
       id TEXT PRIMARY KEY,source TEXT,account TEXT,remote_id TEXT,workspace_id TEXT,resource_id TEXT,
       event_key TEXT UNIQUE,event_type TEXT,title TEXT,body TEXT,destination TEXT,created_at TEXT,
       read_at TEXT,archived_at TEXT,toast TEXT DEFAULT 'pending',seen TEXT);
+      CREATE TABLE IF NOT EXISTS notification_actions(
+        notification_id TEXT,field TEXT,account TEXT,remote_id TEXT,action TEXT,
+        version TEXT,next_at REAL DEFAULT 0,attempts INTEGER DEFAULT 0,
+        PRIMARY KEY(notification_id,field));
       CREATE INDEX IF NOT EXISTS app_notifications_created ON app_notifications(created_at DESC,id);
     """)
 
@@ -92,6 +96,8 @@ def rows(s, q, owner=False):
     status = s.setting("notification_portal:" + ident, {})
     if status.get("authorized") and time.time() - status.get("last_success", 0) > 90:
         status = dict(status, stale=True, error="Portal notifications need refreshing.")
+    if status.get('generation') != s.setting('authorization_generation', 0):
+        status = dict(status, stale=True, authorized=False)
     workspaces = status.get("workspaces", [])
     # Membership-revoked resources and other signed-in accounts never leak into the inbox.
     clauses = [
@@ -162,7 +168,8 @@ def rows(s, q, owner=False):
             item.update(source=row["source"], resource_id=row["resource_id"])
     response = {"items": items, "next_page": page + 1 if len(result) > limit and page < 10000 else None}
     if owner:
-        response.update(portal=status, unread_count=unread_count)
+        response.update(portal=status, unread_count=unread_count,
+                        pending_actions=s.db.execute("SELECT COUNT(*) FROM notification_actions WHERE account=?", (account(s)[1],)).fetchone()[0])
     return response
 
 
@@ -177,6 +184,7 @@ def sync_lock(s):
 
 def sync_portal(s, force=False):
     with sync_lock(s):
+        flush_actions(s)
         if force:
             with s.tx():
                 _, key = account(s)
@@ -213,12 +221,14 @@ def _sync_page(s, force=False):
     try:
         with s.lock:
             connection = adapter.connection(a["connection"])
+        from .managed import guarded_transport
+        send, check = guarded_transport(s, connection, remote)
         token = adapter.token(connection)
         # Notifications use the desktop audience, never the rate-limited public MCP.
         page = state.get("page", 1)
         filter_ = state.get("filter", "all")
-        result = remote(
-            ORIGIN,
+        result = send(
+            connection["origin"],
             "/desktop/v1/notifications?" + urlencode({"filter": filter_, "page": page, "limit": 50}),
             token,
         )
@@ -234,7 +244,7 @@ def _sync_page(s, force=False):
                 ident = str(uuid.uuid5(uuid.NAMESPACE_URL, key + ":notification:" + remote_id))
                 s.db.execute(
                     """INSERT INTO app_notifications(id,source,account,remote_id,workspace_id,event_key,event_type,title,body,destination,created_at,read_at,archived_at,toast,seen)
-                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,destination=excluded.destination,read_at=excluded.read_at,archived_at=excluded.archived_at,workspace_id=excluded.workspace_id,seen=excluded.seen""",
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,body=excluded.body,destination=excluded.destination,read_at=CASE WHEN EXISTS(SELECT 1 FROM notification_actions a WHERE a.notification_id=excluded.id AND a.field='read_at') THEN app_notifications.read_at ELSE excluded.read_at END,archived_at=CASE WHEN EXISTS(SELECT 1 FROM notification_actions a WHERE a.notification_id=excluded.id AND a.field='archived_at') THEN app_notifications.archived_at ELSE excluded.archived_at END,workspace_id=excluded.workspace_id,seen=excluded.seen""",
                     (
                         ident,
                         "portal",
@@ -257,11 +267,12 @@ def _sync_page(s, force=False):
             complete = not next_page and filter_ == "archived"
             if complete:
                 s.db.execute(
-                    "DELETE FROM app_notifications WHERE source='portal' AND account=? AND seen!=?",
+                    "DELETE FROM app_notifications WHERE source='portal' AND account=? AND seen!=? AND NOT EXISTS(SELECT 1 FROM notification_actions a WHERE a.notification_id=app_notifications.id)",
                     (key, seen),
                 )
             state.update(
                 authorized=True,
+                generation=generation,
                 workspaces=result["workspaces"],
                 last_success=time.time(),
                 error="",
@@ -276,7 +287,7 @@ def _sync_page(s, force=False):
             s.set_setting("notification_portal:" + key, state)
     except Exception as exc:
         with s.tx():
-            if account(s)[1] != key:
+            if account(s)[1] != key or s.setting("authorization_generation", 0) != generation:
                 return
             status = exc.status if isinstance(exc, Problem) else 503
             state.update(
@@ -295,7 +306,7 @@ def _sync_page(s, force=False):
 
 
 def mutate(s, body):
-    with sync_lock(s):
+    with s.tx():
         return _mutate(s, body)
 
 
@@ -325,38 +336,63 @@ def _mutate(s, body):
             if not target:
                 raise Problem("Notification unavailable", 404)
             targets = [target]
-        remote_targets = [r for r in targets if r["source"] == "portal"]
-        generation = s.setting("authorization_generation", 0)
-    if remote_targets:
-        from .portal import Portal, remote
-
-        adapter = Portal(s)
-        c = adapter.connection(a["connection"])
-        token = adapter.token(c)
-        for row in remote_targets:
-            with s.lock:
-                rid = s.db.execute(
-                    "SELECT remote_id FROM app_notifications WHERE id=?", (row["id"],)
-                ).fetchone()[0]
-            remote(
-                c["origin"],
-                "/desktop/v1/notifications/actions",
-                token,
-                {"id": rid, "action": "read" if operation == "read_all" else operation},
-            )
-    with s.tx():
-        if account(s)[1] != key or s.setting("authorization_generation", 0) != generation:
-            raise Problem("Account changed; refresh notifications", 409)
         for row in targets:
             column = "archived_at" if operation in {"archive", "restore"} else "read_at"
             value = None if operation in {"unread", "restore"} else now()
             s.db.execute("UPDATE app_notifications SET " + column + "=? WHERE id=?", (value, row["id"]))
+            if row['source'] == 'portal':
+                rid = s.db.execute("SELECT remote_id FROM app_notifications WHERE id=?", (row['id'],)).fetchone()[0]
+                s.db.execute("""INSERT INTO notification_actions(notification_id,field,account,remote_id,action,version)
+                    VALUES(?,?,?,?,?,?) ON CONFLICT(notification_id,field) DO UPDATE SET
+                    action=excluded.action,version=excluded.version,next_at=0,attempts=0""",
+                    (row['id'], column, key, rid, 'read' if operation == 'read_all' else operation, uid()))
             if operation in {"read", "read_all", "archive"}:
                 s.db.execute(
                     "UPDATE app_notifications SET toast='suppressed' WHERE id=? AND toast='pending'",
                     (row["id"],),
                 )
     return {"updated": len(targets)}
+
+
+def schedule_refresh(s, reset=True):
+    with s.tx():
+        _, key = account(s)
+        if key:
+            state = s.setting('notification_portal:' + key, {})
+            if reset:
+                state.update(page=1, filter='all', seen=None, stale=True, next=0)
+            elif state.get('last_success', 0) < time.time() - 90:
+                state['next'] = 0
+            s.set_setting('notification_portal:' + key, state)
+
+
+def flush_actions(s):
+    from .portal import Portal, remote
+    from .managed import guarded_transport
+    with s.lock:
+        active, key = account(s)
+        if not active:
+            return
+        connection = Portal(s).connection(active['connection'])
+        jobs = [dict(r) for r in s.db.execute(
+            "SELECT * FROM notification_actions WHERE account=? AND next_at<=? LIMIT 50",
+            (key, time.time()))]
+    send, check = guarded_transport(s, connection, remote)
+    for job in jobs:
+        try:
+            token = Portal(s).token(connection)
+            send(connection['origin'], '/desktop/v1/notifications/actions', token,
+                 {'id': job['remote_id'], 'action': job['action']})
+            with s.tx():
+                check()
+                s.db.execute("DELETE FROM notification_actions WHERE notification_id=? AND field=? AND version=?",
+                             (job['notification_id'], job['field'], job['version']))
+        except Exception:
+            with s.tx():
+                s.db.execute("UPDATE notification_actions SET attempts=attempts+1,next_at=? WHERE notification_id=? AND field=? AND version=?",
+                             (time.time() + min(300, 2 ** min(8, job['attempts'] + 1)),
+                              job['notification_id'], job['field'], job['version']))
+            return
 
 
 def request(s, path, method, body, owner, token):
@@ -373,20 +409,15 @@ def request(s, path, method, body, owner, token):
             if grant["resource_id"] or method != "GET":
                 raise Problem("Personal read access required", 403)
     if agent_read:
-        # Validate current portal authorization before exposing cached portal alerts to agents.
-        if account(s)[0]:
-            try:
-                sync_portal(s, force=True)
-            except Problem:
-                pass
+        schedule_refresh(s, reset=False)
     if method == "GET" and url.path == "/v1/notifications":
         with s.lock:
             return rows(s, q, owner and not agent_read)
     if owner and method == "POST" and url.path == "/v1/notifications/actions":
         return mutate(s, body)
     if owner and method == "POST" and url.path == "/v1/notifications/refresh":
-        sync_portal(s, force=True)
-        return {"refreshed": True}
+        schedule_refresh(s)
+        return {"refreshed": False, "scheduled": True}
     raise Problem("Notification operation unavailable", 403)
 
 

@@ -59,7 +59,7 @@ class API:
         ).fetchone()
         return row[0] if row else (self.store.setting("remote_edge:" + ident, {}).get("created_at") or now())
 
-    def dispatch(self, path, method="GET", body=None, owner=False, token=""):
+    def dispatch(self, path, method="GET", body=None, owner=False, token="", proof=None):
         from .cloud_logs import ROUTE, dispatch as cloud_dispatch
 
         if ROUTE.fullmatch(urlsplit(path).path):
@@ -75,9 +75,9 @@ class API:
 
         q = parse_qs(urlsplit(path).query)
         with scope(self.store, q.get("workspace_id", [None])[-1]):
-            return self._dispatch(path, method, body, owner, token)
+            return self._dispatch(path, method, body, owner, token, proof)
 
-    def _dispatch(self, path, method="GET", body=None, owner=False, token=""):
+    def _dispatch(self, path, method="GET", body=None, owner=False, token="", proof=None):
         body = body or {}
         url = urlsplit(path)
         path = url.path
@@ -277,34 +277,12 @@ class API:
         # All local execution and credential/configuration endpoints are owner-only.
         if not owner:
             raise Problem("Desktop owner authorization required", 403)
-        if resource and method != "GET" and path in ("/v1/ssh", "/v1/ssh/open", "/v1/forwarding"):
-            row = s.db.execute("SELECT connection,remote_id FROM items WHERE id=?", (resource,)).fetchone()
-            if row and row["connection"]:
-                from .portal import Portal, remote
-
-                adapter = Portal(s)
-                connection = adapter.connection(row["connection"])
-                credential = adapter.token(connection)
-                page = remote(
-                    connection["origin"],
-                    "/desktop/v1/workspaces/" + connection["workspace"] + "/resources",
-                    credential,
-                )
-                while True:
-                    if any(r["id"] == row["remote_id"] for r in page["items"]):
-                        break
-                    if not page.get("next"):
-                        raise Problem("Current online resource authorization required", 403)
-                    from urllib.parse import urlencode
-
-                    page = remote(
-                        connection["origin"],
-                        "/desktop/v1/workspaces/"
-                        + connection["workspace"]
-                        + "/resources?"
-                        + urlencode({"after": page["next"]}),
-                        credential,
-                    )
+        if resource and method != 'GET' and path in ('/v1/ssh', '/v1/ssh/key', '/v1/ssh/open', '/v1/forwarding'):
+            row = s.db.execute('SELECT connection FROM items WHERE id=?', (resource,)).fetchone()
+            if row and row['connection']:
+                if proof is None:
+                    raise Problem('Current online resource authorization required', 403)
+                proof[0]()
 
         if path in ("/v1/monitoring", "/v1/monitoring/checks") and method == "POST":
             from . import health
@@ -323,16 +301,19 @@ class API:
                     "portal_url": team_portal_url(),
                     "local_members": s.setting("local_members", []),
                     "mcp_config": {"mcpServers": {"alshitasks": mcp_command()}},
-                    "paused": s.setting("paused", False),
+                    "paused": False,
+                    "pause_migration": s.setting("pause_migration"),
                     "notification_toasts": s.setting("notification_toasts", True),
                     "http_port": s.setting("http_port", None),
                     "retention": s.setting("retention", {"days": 7, "max_bytes": 1024**3}),
-                    "usage": self.logs.retain(**s.setting("retention", {"days": 7, "max_bytes": 1024**3})),
+                    "usage": s.setting("log_usage", {"bytes": 0, "events": 0}),
                     "socket": str(s.paths.socket),
                     "secret_service": "required for connections",
                     "stopping": self.stopping,
                 }
             if method == "PATCH":
+                if "paused" in body:
+                    raise Problem("Global pause has been retired. Disable individual monitoring checks or forwarding destinations, disconnect your portal account, or stop the service.", 410)
                 if set(body) - {"paused", "retention", "http_port", "local_members", "notification_toasts"}:
                     raise Problem("Unknown setting")
                 if "local_members" in body:
@@ -437,10 +418,10 @@ class API:
             # SQLite backup must be called outside an open write transaction (router handles it).
             return files.backup(s, self.logs, body["path"])
         if path == "/v1/ssh/key" and method == "POST":
-            return ssh.import_key(s, resource, body["path"], body)
+            return ssh.import_key(s, resource, body["path"], body, inspected=proof[1] if proof else None)
         if path == "/v1/ssh":
             if method == "POST":
-                return ssh.configure(s, resource, body)
+                return ssh.configure(s, resource, body, inspected=proof[1] if proof else None)
             if method == "DELETE":
                 return ssh.revoke(s, resource)
             if method == "GET":
@@ -486,7 +467,8 @@ class API:
                     raise Problem("HTTPS destination required")
                 if s.item(resource)["kind"] != "resource":
                     raise Problem("Resource required")
-                Secrets().get(body["credential"])
+                if proof is None:
+                    raise Problem("Credential verification required", 409)
                 ident = uid()
                 s.db.execute(
                     "INSERT INTO forwarding VALUES(?,?,?,?,1)",
@@ -504,13 +486,15 @@ class API:
                     s.db.execute("UPDATE forwarding SET enabled=0 WHERE id=?", (body["id"],))
                     return {"disabled": True}
                 if body.get("credential"):
-                    Secrets().get(body["credential"])
+                    if proof is None:
+                        raise Problem("Credential verification required", 409)
                     s.db.execute(
                         "UPDATE forwarding SET credential=? WHERE id=?", (body["credential"], body["id"])
                     )
                 s.set_setting(
                     "forward_status:" + body["id"], {"state": "pending", "message": "Retry requested."}
                 )
+                s.db.execute("UPDATE forwarding SET enabled=1 WHERE id=?", (body["id"],))
                 s.db.execute("UPDATE forward_queue SET next_at=0 WHERE target=?", (body["id"],))
                 return {"retrying": True}
         if path == "/v1/agent-grants" and method == "POST":

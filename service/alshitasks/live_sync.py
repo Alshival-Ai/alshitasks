@@ -10,6 +10,7 @@ import urllib.request
 from email.utils import parsedate_to_datetime
 
 from .monitoring import NoRedirect
+from .store import Problem
 from .portal import Portal
 
 FEATURE = 'graph-account-events-v1'
@@ -119,6 +120,7 @@ def listen(store, connection, stop, generation, account_wide=True):
             _, check = guarded_transport(store, connection, lambda: None)
             path = '/desktop/v1/events' if account_wide else '/desktop/v1/workspaces/' + connection['workspace'] + '/events'
             request = urllib.request.Request(connection['origin'] + path, headers={'Authorization': 'Bearer ' + token, 'Accept': 'text/event-stream'})
+            check()
             with urllib.request.build_opener(NoRedirect).open(request, timeout=45) as stream:
                 if isinstance(stop, ListenerStop):
                     stop.attach(stream)
@@ -168,12 +170,12 @@ def listen(store, connection, stop, generation, account_wide=True):
 
 
 def valid(store, connection, generation):
-    account = store.setting('active_account')
-    current = Portal(store).connection(connection['id'])
-    return (not store.setting('paused', False)
-            and store.setting('authorization_generation', 0) == generation
-            and current['state'] == 'connected'
-            and account and (account['id'], account['origin']) == (connection['account'], connection['origin']))
+    from .eligibility import check
+    try:
+        check(store, connection, generation)
+        return True
+    except Problem:
+        return False
 
 
 def notification_loop(api, stop):
@@ -184,7 +186,7 @@ def notification_loop(api, stop):
             with store.lock:
                 account = store.setting('active_account')
                 generation = store.setting('authorization_generation', 0)
-                if account and not store.setting('paused', False):
+                if account:
                     root = Portal(store).connection(account['connection'])
                     if FEATURE in json.loads(root['capabilities']).get('features', []):
                         desired[(root['id'], generation, True)] = (root, True)

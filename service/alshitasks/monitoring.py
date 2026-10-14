@@ -225,15 +225,24 @@ def queue_forward(store, resource, events):
             total += len(data.encode())
 
 
-def forward_once(store, secrets=None):
+def claim_forward(store, target=None):
     rows = store.db.execute(
-        "SELECT q.*,f.destination,f.credential FROM forward_queue q JOIN forwarding f ON f.id=q.target WHERE f.enabled=1 AND q.next_at<=? ORDER BY q.next_at",
-        (time.time(),),
+        "SELECT q.*,f.destination,f.credential FROM forward_queue q JOIN forwarding f ON f.id=q.target WHERE f.enabled=1 AND q.next_at<=? AND (? IS NULL OR q.target=?) ORDER BY q.next_at",
+        (time.time(), target, target),
     ).fetchall()
     row = next(
         (r for r in rows if store.setting("forward_status:" + r["target"], {}).get("state") != "blocked"),
         None,
     )
+    if not row:
+        return
+    store.db.execute("UPDATE forward_queue SET next_at=? WHERE id=? AND target=?", (time.time() + 60, row['id'], row['target']))
+    return dict(row)
+
+
+def forward_once(store, secrets=None, target=None):
+    with store.tx():
+        row = claim_forward(store, target)
     if not row:
         return
     try:
@@ -246,35 +255,37 @@ def forward_once(store, secrets=None):
         with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
             if not 200 <= response.status < 300:
                 raise ValueError()
-        store.db.execute("DELETE FROM forward_queue WHERE id=? AND target=?", (row["id"], row["target"]))
-        store.set_setting(
-            "forward_status:" + row["target"], {"state": "connected", "message": "Last batch delivered."}
-        )
+        with store.tx():
+            store.db.execute("DELETE FROM forward_queue WHERE id=? AND target=?", (row["id"], row["target"]))
+            store.set_setting(
+                "forward_status:" + row["target"], {"state": "connected", "message": "Last batch delivered."}
+            )
     except Exception as error:
-        permanent = (
-            isinstance(error, urllib.error.HTTPError)
-            and 400 <= error.code < 500
-            and error.code not in (408, 429)
-        )
-        store.set_setting(
-            "forward_status:" + row["target"],
-            {
-                "state": "blocked" if permanent else "retrying",
-                "message": f"Cloud returned HTTP {error.code}; fix the token or destination and retry."
-                if permanent
-                else "Cloud unavailable; retrying with backoff.",
-            },
-        )
-        delay = min(3600, 2 ** min(12, row["attempts"] + 1))
-        if isinstance(error, urllib.error.HTTPError):
-            try:
-                delay = max(delay, min(86400, int(error.headers.get("Retry-After", "0"))))
-            except (ValueError, TypeError):
-                pass
-        store.db.execute(
-            "UPDATE forward_queue SET attempts=attempts+1,next_at=? WHERE id=? AND target=?",
-            (time.time() + (86400 if permanent else delay), row["id"], row["target"]),
-        )
+        with store.tx():
+            permanent = (
+                isinstance(error, urllib.error.HTTPError)
+                and 400 <= error.code < 500
+                and error.code not in (408, 429)
+            )
+            store.set_setting(
+                "forward_status:" + row["target"],
+                {
+                    "state": "blocked" if permanent else "retrying",
+                    "message": f"Cloud returned HTTP {error.code}; fix the token or destination and retry."
+                    if permanent
+                    else "Cloud unavailable; retrying with backoff.",
+                },
+            )
+            delay = min(3600, 2 ** min(12, row["attempts"] + 1))
+            if isinstance(error, urllib.error.HTTPError):
+                try:
+                    delay = max(delay, min(86400, int(error.headers.get("Retry-After", "0"))))
+                except (ValueError, TypeError):
+                    pass
+            store.db.execute(
+                "UPDATE forward_queue SET attempts=attempts+1,next_at=? WHERE id=? AND target=?",
+                (time.time() + (86400 if permanent else delay), row["id"], row["target"]),
+            )
 
 
 def forward_payload(destination, data):

@@ -6,7 +6,21 @@ from .store import Problem
 from .platform_support import WINDOWS, owned, protect
 
 
-def configure(store, resource, body, home=None):
+def inspect_alias(store, body, home=None):
+    config = Path(home or store.paths.home) / '.ssh' / 'config'
+    alias = body.get('alias', '')
+    if not re.fullmatch(r'alt-[A-Za-z0-9_-]{1,64}', alias):
+        raise Problem('Use an alias beginning alt- followed by letters, digits or dashes')
+    resolved = subprocess.run(
+        ["ssh", "-F", str(config) if config.exists() else os.devnull, "-G", alias],
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+    return resolved.stdout
+
+
+def configure(store, resource, body, home=None, inspected=None):
     if store.item(resource)["kind"] != "resource":
         raise Problem("SSH requires a resource")
     home = Path(home or store.paths.home)
@@ -39,18 +53,13 @@ def configure(store, resource, body, home=None):
     if managed.is_symlink() or config.is_symlink():
         raise Problem("Refusing symlinked SSH configuration")
     # Evaluate OpenSSH configuration to catch explicit aliases, wildcards and Includes.
-    resolved = subprocess.run(
-        ["ssh", "-F", str(config) if config.exists() else os.devnull, "-G", alias],
-        capture_output=True,
-        text=True,
-        timeout=5,
-    )
+    resolved = inspected if inspected is not None else inspect_alias(store, body, home)
     existing = store.db.execute("SELECT * FROM aliases WHERE alias=?", (alias,)).fetchone()
     if existing and existing["resource_id"] != resource:
         raise Problem("Alias already assigned", 409)
     if not existing and any(
         line.startswith("hostname ") and line.split(" ", 1)[1].strip() != alias
-        for line in resolved.stdout.splitlines()
+        for line in resolved.splitlines()
     ):
         raise Problem("Alias collides with existing SSH configuration", 409)
     current = config.read_text() if config.exists() else ""
@@ -102,19 +111,23 @@ def open_terminal(store, resource):
     row = store.db.execute("SELECT alias FROM aliases WHERE resource_id=?", (resource,)).fetchone()
     if not row:
         raise Problem("SSH alias unavailable", 404)
+    return launch_terminal(row["alias"])
+
+
+def launch_terminal(alias):
     import shutil
 
     if WINDOWS:
-        subprocess.Popen(["ssh", row["alias"]], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        subprocess.Popen(["ssh", alias], creationflags=subprocess.CREATE_NEW_CONSOLE)
         return {"opened": True}
 
     if not shutil.which("x-terminal-emulator"):
         raise Problem("Set a default terminal emulator first", 503)
-    subprocess.Popen(["x-terminal-emulator", "-e", "ssh", row["alias"]], start_new_session=True)
+    subprocess.Popen(["x-terminal-emulator", "-e", "ssh", alias], start_new_session=True)
     return {"opened": True}
 
 
-def import_key(store, resource, source, body):
+def import_key(store, resource, source, body, inspected=None):
     """Copy a user-selected key into private device storage and configure its alias."""
     from .paths import private_dir
     from .store import uid
@@ -135,7 +148,7 @@ def import_key(store, resource, source, body):
         protect(destination)
         target.write(content)
     try:
-        result = configure(store, resource, dict(body, identity_file=str(destination), agent=False))
+        result = configure(store, resource, dict(body, identity_file=str(destination), agent=False), inspected=inspected)
     except Exception:
         destination.unlink(missing_ok=True)
         raise

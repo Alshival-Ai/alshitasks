@@ -224,11 +224,14 @@ def resume_all(store):
                 account = store.setting("active_account")
                 if not account or c["state"] != "connected" or c["account"] != account["id"]:
                     continue
+            from .managed import guarded_transport
+            send, check = guarded_transport(store, c, remote)
             token = Portal(store).token(c)
             path = "/desktop/v1/workspaces/" + c["workspace"] + "/imports/" + job["id"]
             if job["state"] == "cancelling":
-                response = remote(c["origin"], path, token, body={"operation": "cancel"})
+                response = send(c["origin"], path, token, body={"operation": "cancel"})
                 with store.tx():
+                    check()
                     if response.get("result"):
                         finish(store, job, response["result"])
                     else:
@@ -238,7 +241,7 @@ def resume_all(store):
                         store.set_setting("publishing:" + job["source_board"], None)
                 continue
             archive = archive_bytes(store, job["manifest"])
-            state = remote(
+            state = send(
                 c["origin"],
                 path,
                 token,
@@ -260,7 +263,7 @@ def resume_all(store):
                             or Portal(store).connection(c["id"])["state"] != "connected"
                         ):
                             return
-                    remote(
+                    send(
                         c["origin"],
                         path,
                         token,
@@ -274,11 +277,16 @@ def resume_all(store):
                     current = store.setting("active_account")
                     if current != account or Portal(store).connection(c["id"])["state"] != "connected":
                         return
-                result = remote(c["origin"], path, token, body={"operation": "commit"})["result"]
+                result = send(c["origin"], path, token, body={"operation": "commit"})["result"]
             with store.tx():
+                check()
                 finish(store, job, result)
         except (Problem, OSError) as exc:
             with store.tx():
+                if store.setting('active_account') != account:
+                    continue
+                if isinstance(exc, Problem) and exc.status == 409 and 'Account' in str(exc):
+                    continue
                 retry = isinstance(exc, OSError) or exc.status >= 500 or exc.status == 429
                 job.update(
                     state=("cancelling" if job["state"] == "cancelling" else "queued")

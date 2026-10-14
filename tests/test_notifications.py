@@ -170,6 +170,7 @@ class MonitoringNotifications(unittest.TestCase):
             notifications.sync_portal(self.s, True)
             self.assertEqual(len(notifications.pending(self.s)), 1)
             self.portal_items = []
+            notifications.sync_portal(self.s, True)
             result = self.api.dispatch("/v1/notifications?agent_read=1", owner=True)
             self.assertEqual(result["items"], [])
         self.sample("missing")

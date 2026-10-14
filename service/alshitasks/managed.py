@@ -75,19 +75,16 @@ def token(store, connection):
 
 def guarded_transport(store, connection, transport):
     """Fence old workers at each request, including long attachment transfers."""
-    with store.lock:
-        generation = store.setting('authorization_generation', 0)
+    from .eligibility import capture, check as eligible
+    generation = capture(store, connection)
     def check():
-        if store.setting('authorization_generation', 0) != generation:
-            raise Problem('Account changed; work retained locally', 409)
+        eligible(store, connection, generation)
+    def send(*args, **kwargs):
+        check()
         if enabled(store):
             token(store, connection)
-    def send(*args, **kwargs):
-        with store.lock:
-            check()
         result = transport(*args, **kwargs)
-        with store.lock:
-            check()
+        check()
         return result
     return send, check
 

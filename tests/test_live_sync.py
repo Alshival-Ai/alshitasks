@@ -137,7 +137,7 @@ class LiveSync(unittest.TestCase):
                 self.assertTrue(entered.wait(2))
                 self.assertEqual(calls, [(self.c['id'], True)])
                 with self.s.tx():
-                    self.s.set_setting('paused', True)
+                    self.s.set_setting('active_account', None)
                 self.assertTrue(cancelled.wait(2))
             finally:
                 stop.set(); manager.join(3)
@@ -182,5 +182,5 @@ class LiveSync(unittest.TestCase):
             self.assertTrue(live_sync.valid(self.s, self.c, 0))
             self.s.set_setting('authorization_generation', 1)
             self.assertFalse(live_sync.valid(self.s, self.c, 0))
-            self.s.set_setting('paused', True)
+            self.s.set_setting('active_account', None)
             self.assertFalse(live_sync.valid(self.s, self.c, 1))

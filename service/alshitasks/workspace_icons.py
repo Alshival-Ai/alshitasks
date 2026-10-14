@@ -168,9 +168,6 @@ def sync_one(store, connection, transport=None):
 def icon_loop(api, stop):
     from .sync_worker import connections
     while not stop.wait(2):
-        with api.store.lock:
-            if api.store.setting('paused', False):
-                continue
         for connection in connections(api.store):
             if stop.is_set():
                 return

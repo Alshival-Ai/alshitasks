@@ -231,8 +231,8 @@ class Acceptance(unittest.TestCase):
                 ("target", "https://example.com/logs", r["id"], "key"),
             )
             monitoring.queue_forward(self.store, r["id"], [self.event()] * 2)
-            with patch.object(Secrets, "get", side_effect=Problem("Locked")):
-                monitoring.forward_once(self.store)
+        with patch.object(Secrets, "get", side_effect=Problem("Locked")):
+            monitoring.forward_once(self.store)
         row = self.store.db.execute("SELECT * FROM forward_queue").fetchone()
         self.assertEqual(row["attempts"], 1)
         self.assertLess(row["bytes"], 16 * 1024**2)
@@ -257,6 +257,8 @@ class Acceptance(unittest.TestCase):
                 "INSERT INTO connections VALUES(:id,:origin,:account,:workspace,:state,:cursor,:capabilities)",
                 c,
             )
+        with self.store.tx():
+            self.store.set_setting("active_account", {"id": c["account"], "origin": c["origin"], "connection": c["id"]})
         return c
 
     def record(self, ident=None, kind="task", **data):

@@ -36,6 +36,7 @@ export function ResourceLogs({ item }: { item: Item }) {
     [until, setUntil] = useState(""),
     [events, setEvents] = useState<Event[]>([]),
     [cursor, setCursor] = useState<string | null>(null),
+    [cache, setCache] = useState<any>(),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [name, setName] = useState("Log sender"),
@@ -106,12 +107,19 @@ export function ResourceLogs({ item }: { item: Item }) {
           : (result.items ?? result.events ?? []),
       );
       setCursor(result.next_cursor ?? null);
+      setCache(result.cache);
     } catch (e) {
       if (current === generation.current) setError((e as Error).message);
     } finally {
       if (current === generation.current) setBusy(false);
     }
   }
+  useEffect(() => {
+    if (source !== "portal" || !setup) return;
+    void load();
+    const timer = setInterval(() => void load(), 5000);
+    return () => clearInterval(timer);
+  }, [source, setup, severity, text, since, until, trace, workspace, item.id]);
   async function run(fn: () => Promise<void>) {
     setError("");
     setBusy(true);
@@ -152,8 +160,9 @@ export function ResourceLogs({ item }: { item: Item }) {
       <p>
         {source === "local"
           ? "Stored on this computer. Logs are not included in project synchronization."
-          : "Queries your portal account. An active connection and internet access are required."}
+          : "Shows cached portal logs and refreshes them in the background."}
       </p>
+      {source === "portal" && cache && <p role="status">{cache.error || (cache.state === "loading" ? "Loading portal logs?" : cache.stale ? "Showing cached logs; refresh pending." : "Portal cache is up to date.")}</p>}
       <form
         onSubmit={(e) => {
           e.preventDefault();

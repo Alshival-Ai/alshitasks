@@ -76,6 +76,13 @@ class Store:
 
             with self.tx():
                 adopt_legacy(self)
+                if not self.setting('pause_retired'):
+                    if self.setting('paused', False):
+                        self.db.execute("UPDATE health_checks SET enabled=0,revision=revision+1,lease=NULL,lease_until=0 WHERE enabled=1")
+                        self.db.execute("UPDATE forwarding SET enabled=0 WHERE enabled=1")
+                        self.set_setting('pause_migration', 'Previously paused monitoring checks and forwarding destinations remain disabled. Re-enable them individually in resource settings. Connected portal accounts synchronize automatically.')
+                    self.set_setting('paused', False)
+                    self.set_setting('pause_retired', True)
                 from .graph import migrate
 
                 migrate(self)

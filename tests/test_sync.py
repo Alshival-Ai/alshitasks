@@ -29,6 +29,8 @@ class SyncAcceptance(unittest.TestCase):
                 "INSERT INTO connections VALUES(:id,:origin,:account,:workspace,:state,:cursor,:capabilities)",
                 self.c,
             )
+        with self.s.tx():
+            self.s.set_setting("active_account", {"id": self.c["account"], "origin": self.c["origin"], "connection": self.c["id"]})
         self.board = {
             "id": uid(),
             "kind": "board",
@@ -265,7 +267,9 @@ class SyncAcceptance(unittest.TestCase):
             self.assertIn(self.c["id"], values)
             with self.s.tx():
                 adapter.dispatch("/v1/portal/disconnect", "POST", {"connection": second["id"]}, {})
-            self.assertFalse(values)
+            self.assertTrue(self.s.setting("credential_cleanup:" + self.c["id"]))
+            with self.assertRaises(Problem):
+                adapter.token(second)
 
     def test_offline_parent_identity_and_unshared_assignment_draft(self):
         self.sync()
@@ -329,7 +333,8 @@ class SyncAcceptance(unittest.TestCase):
             patch("alshitasks.portal.remote", side_effect=transport),
         ):
             with self.s.tx():
-                connection = Portal(self.s).connect(origin)
+                self.s.set_setting("active_account", None)
+            connection = Portal(self.s).connect(origin)
             query = parse_qs(urlsplit(connection["url"]).query)
             callback = query["redirect_uri"][0]
             valid = {"state": query["state"][0], "iss": origin, "code": "fixture-code"}

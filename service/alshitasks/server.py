@@ -81,14 +81,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.connection.settimeout(10)
             body = json.loads(self.rfile.read(length)) if length else {}
             token = self.headers.get("Authorization", "").removeprefix("Bearer ")
-            if self.path.startswith("/v1/notifications"):
-                value = api.dispatch(self.path, self.command, body, owner, token)
-            elif self.path == "/v1/backup" and owner:
-                with api.store.lock:
-                    value = api.dispatch(self.path, self.command, body, owner, token)
-            else:
-                with api.store.tx():
-                    value = api.dispatch(self.path, self.command, body, owner, token)
+            from .requests import handle
+            value = handle(api, self.path, self.command, body, owner, token)
             self.respond(200, value)
         except Problem as e:
             self.respond(e.status, {"error": {"message": str(e)}})
@@ -109,23 +103,52 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 def background(api, stop):
+    from .health import tick
     while not stop.wait(2):
         if api.stopping:
             stop.set()
-            break
-        try:
-            with api.store.tx():
-                if api.store.setting("paused", False):
-                    continue
-            from .health import tick
+            return
+        tick(api.store)
 
-            tick(api.store)
+
+def forwarding_loop(api, stop):
+    from concurrent.futures import ThreadPoolExecutor
+    active = {}
+    with ThreadPoolExecutor(max_workers=4, thread_name_prefix='forwarding') as pool:
+        while not stop.wait(0.25):
+            active = {key: future for key, future in active.items() if not future.done()}
+            with api.store.lock:
+                targets = [r[0] for r in api.store.db.execute(
+                    "SELECT DISTINCT f.id FROM forwarding f JOIN forward_queue q ON q.target=f.id WHERE f.enabled=1 AND q.next_at<=? ORDER BY q.next_at", (time.time(),))]
+            for target in targets:
+                if len(active) >= 4:
+                    break
+                if target not in active:
+                    active[target] = pool.submit(monitoring.forward_once, api.store, target=target)
+
+
+def retention_loop(api, stop):
+    logs = Logs(api.store.paths)
+    try:
+        while not stop.is_set():
+            usage = logs.retain(**api.store.setting('retention', {'days': 7, 'max_bytes': 1024**3}))
             with api.store.tx():
-                monitoring.forward_once(api.store)
-                api.logs.retain(**api.store.setting("retention", {"days": 7, "max_bytes": 1024**3}))
-        except Exception:
-            # Endpoint-specific status is durable; no credential-bearing diagnostics.
-            pass
+                api.store.set_setting('log_usage', usage)
+            stop.wait(60)
+    finally:
+        logs.db.close()
+
+
+def credential_cleanup_loop(api, stop):
+    from .security import Secrets
+    while not stop.wait(1):
+        with api.store.lock:
+            keys = [r[0] for r in api.store.db.execute("SELECT key FROM settings WHERE key LIKE 'credential_cleanup:%' AND value='true'")]
+        for key in keys:
+            with api.store.token_lock:
+                Secrets().delete(key.split(':', 1)[1])
+            with api.store.tx():
+                api.store.db.execute('DELETE FROM settings WHERE key=?', (key,))
 
 
 def supervise(api, stop, worker):
@@ -183,8 +206,9 @@ def run(root=None):
 
     from .notifier import inbox_worker
     from .workspace_icons import icon_loop
+    from .resource_cache import resource_cache_loop
 
-    for worker in (background, graph_loop, file_loop, notification_loop, inbox_worker, icon_loop):
+    for worker in (background, forwarding_loop, retention_loop, graph_loop, file_loop, notification_loop, inbox_worker, icon_loop, resource_cache_loop, credential_cleanup_loop):
         threading.Thread(target=supervise, args=(api, stop, worker), daemon=True, name=worker.__name__).start()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stop.set())

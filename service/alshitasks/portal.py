@@ -183,19 +183,24 @@ class Portal:
     def token(self, c):
         from . import managed
 
+        from .eligibility import capture, check
+        generation = capture(self.store, c)
         # Rotation is serialized across all workspace views of the same account credential.
         with self.store.lock:
             credential = self.store.setting("credential:" + c["id"], c["id"])
             current = self.connection(c["id"])
             managed_account = managed.enabled(self.store)
         if managed_account:
-            return managed.token(self.store, current)
-        with self.store.token_lock:
-            return self._token(current, credential)
+            result = managed.token(self.store, current)
+        else:
+            with self.store.token_lock:
+                check(self.store, current, generation)
+                result = self._token(current, credential, generation)
+        check(self.store, current, generation)
+        return result
 
-    def _token(self, c, credential):
-        # Never acquire store.lock while holding token_lock: sign-out takes
-        # them in the opposite order to fence credential deletion.
+    def _token(self, c, credential, generation):
+        from .eligibility import check
         if c["state"] not in ("connected", "syncing"):
             raise Problem("Connection is disconnected; sign in again", 401)
         value = json.loads(Secrets().get(credential))
@@ -206,12 +211,14 @@ class Portal:
                 return value["access_token"]
             if not value.get("refresh_token"):
                 raise Problem("Sign in again to refresh authorization", 401)
+            check(self.store, c, generation)
             if not value.get("desktop_refresh_id"):
                 value["desktop_refresh_id"] = secrets.token_urlsafe(32)
                 # Save the attempt before contacting the server. A response lost
                 # during shutdown or credential replacement can then be replayed.
                 Secrets().put(credential, json.dumps(value))
             try:
+                check(self.store, c, generation)
                 refreshed = remote(
                     c["origin"],
                     "/oauth/token/",
@@ -225,6 +232,7 @@ class Portal:
                     form=True,
                 )
             except Problem as error:
+                check(self.store, c, generation)
                 if error.status == 401:
                     # Every workspace shares this credential and token_lock.
                     # Persist the terminal state so workers and restarts cannot
@@ -232,6 +240,7 @@ class Portal:
                     value["reauthorization_required"] = True
                     Secrets().put(credential, json.dumps(value))
                 raise
+            check(self.store, c, generation)
             value.update(refreshed, expires_at=time.time() + refreshed.get("expires_in", 3600))
             value.pop("desktop_refresh_id", None)
             Secrets().put(credential, json.dumps(value))
@@ -243,23 +252,27 @@ class Portal:
 
     def connect(self, origin):
         from . import managed
-
-        if managed.enabled(self.store):
-            raise Problem("Connected through your Ubuntu account", 409)
         from .accounts import ORIGIN
-
-        if origin != ORIGIN:
-            raise Problem("Sign-in is available only through Alshival.Ai")
-        # Reconnecting the same account retains local identity and drafts.
-        # accounts.activate rejects a callback for a different signed-in account.
-        if self.store.db.execute("SELECT 1 FROM connections WHERE state='authorizing'").fetchone():
-            raise Problem("Sign-in is already open in your browser", 409)
-        generation = self.store.setting("authorization_generation", 0)
         ident = uid()
+        with self.store.tx():
+            if managed.enabled(self.store):
+                raise Problem('Connected through your Ubuntu account', 409)
+            if origin != ORIGIN:
+                raise Problem('Sign-in is available only through Alshival.Ai')
+            if self.store.db.execute("SELECT 1 FROM connections WHERE state='authorizing'").fetchone():
+                raise Problem('Sign-in is already open in your browser', 409)
+            generation = self.store.setting('authorization_generation', 0)
+            self.store.db.execute('INSERT INTO connections VALUES(?,?,?,?,?,?,?)',
+                                  (ident, origin, '', '', 'authorizing', None, '{}'))
         state = secrets.token_urlsafe(32)
         verifier = secrets.token_urlsafe(64)
         # Verify keyring access before initiating browser consent.
-        Secrets().put(ident, json.dumps({"pending": True}))
+        try:
+            Secrets().put(ident, json.dumps({"pending": True}))
+        except Exception:
+            with self.store.tx():
+                self.store.db.execute("UPDATE connections SET state='authorization-failed' WHERE id=?", (ident,))
+            raise
         store = self.store
         finished = threading.Event()
 
@@ -353,11 +366,12 @@ class Portal:
                     "response_types": ["code"],
                 },
             )
-            self.store.db.execute(
-                "INSERT INTO connections VALUES(?,?,?,?,?,?,?)",
-                (ident, origin, "", "", "authorizing", None, "{}"),
-            )
+            with self.store.lock:
+                if self.store.setting('authorization_generation', 0) != generation:
+                    raise Problem('Sign-in was cancelled', 409)
         except Exception:
+            with self.store.tx():
+                self.store.db.execute("UPDATE connections SET state='authorization-failed' WHERE id=?", (ident,))
             server.server_close()
             Secrets().delete(ident)
             raise
@@ -425,42 +439,15 @@ class Portal:
 
             return self.connect(ORIGIN)
         if path in ("/v1/portal/logs", "/v1/portal/monitoring") and method == "GET":
-            resource = q.get("resource_id")
-            from .workspaces import require_item
-
-            require_item(self.store, resource)
-            row = self.store.db.execute(
-                "SELECT connection,remote_id FROM items WHERE id=? AND kind='resource'", (resource,)
-            ).fetchone()
-            if not row or not row["connection"]:
-                raise Problem("Choose a connected workspace resource")
-            c = self.connection(row["connection"])
-            token = self.token(c)
-            if path.endswith("/logs"):
-                filters = {
-                    k: v for k, v in q.items() if k in ("since", "until", "severity", "text", "limit", "start", "end", "q", "trace_id", "cursor") and v
-                }
-                filters.update(resource_id=row["remote_id"], limit=min(200, max(1, int(q.get("limit", 100)))))
-                return remote(
-                    c["origin"],
-                    "/desktop/v1/workspaces/" + c["workspace"] + "/logs?" + urlencode(filters),
-                    token,
-                )
-            result = remote(
-                c["origin"],
-                "/desktop/v1/workspaces/"
-                + c["workspace"]
-                + "/monitoring?"
-                + urlencode({"resource_id": row["remote_id"]}),
-                token,
-            )
-            return {"resources": [r for r in result["resources"] if r["id"] == row["remote_id"]]}
+            from .resource_cache import read
+            return read(self.store, path, q)
         c = self.connection(body.get("connection") or q.get("connection"))
         if path == "/v1/portal/disconnect" and method == "POST":
             from .managed import enabled
 
             if enabled(self.store):
-                raise Problem("Connected through your Ubuntu account; use Pause to stop syncing", 409)
+                raise Problem("Connected through your Ubuntu account", 409)
+            self.store.set_setting("authorization_generation", self.store.setting("authorization_generation", 0) + 1)
             self.store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (c["id"],))
             self.store.db.execute(
                 "UPDATE outbox SET state='draft',reason='Disconnected' WHERE connection=? AND state='queued'",
@@ -474,8 +461,7 @@ class Portal:
                 )
             ]
             if not any(self.store.setting("credential:" + r["id"], r["id"]) == credential for r in active):
-                with self.store.token_lock:
-                    Secrets().delete(credential)
+                self.store.set_setting("credential_cleanup:" + credential, True)
             return {"disconnected": True, "local_copies_retained": True}
         token = self.token(c)
         if path == "/v1/portal/workspaces":

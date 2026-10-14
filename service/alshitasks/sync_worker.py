@@ -106,9 +106,7 @@ def graph_loop(api, stop):
             store.sync_wake.wait(0.25)
             store.sync_wake.clear()
             active = {key: future for key, future in active.items() if not future.done()}
-            with store.lock:
-                paused = store.setting("paused", False)
-            if paused or stop.is_set():
+            if stop.is_set():
                 continue
             if time.monotonic() >= discovery_at and (discovery is None or discovery.done()):
                 discovery = discovery_pool.submit(discover, store)
@@ -134,9 +132,6 @@ def file_loop(api, stop):
 
     store = api.store
     while not stop.wait(2):
-        with store.lock:
-            if store.setting("paused", False):
-                continue
         try:
             # Publication and ordinary graph sync must not rebind identities concurrently.
             if store.sync_lock.acquire(blocking=False):

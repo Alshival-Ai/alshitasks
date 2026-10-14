@@ -44,8 +44,7 @@ def signout(store):
     store.set_setting("authorization_generation", store.setting("authorization_generation", 0) + 1)
     for pending in store.db.execute("SELECT id FROM connections WHERE state='authorizing'").fetchall():
         store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (pending[0],))
-        with store.token_lock:
-            Secrets().delete(pending[0])
+        store.set_setting("credential_cleanup:" + pending[0], True)
     current = store.setting("active_account")
     if not current:
         return {"signed_out": True}
@@ -60,8 +59,7 @@ def signout(store):
             (row["id"],),
         )
     for credential in credentials:
-        with store.token_lock:
-            Secrets().delete(credential)
+        store.set_setting("credential_cleanup:" + credential, True)
     store.set_setting("active_account", None)
     store.set_setting("account_navigation", [])
     return {"signed_out": True, "local_copies_retained": True}
@@ -79,7 +77,10 @@ def discover(store, transport=None):
         if not account or schedule.get("next", 0) > time.time():
             return
         c = Portal(store).connection(account["connection"])
+        generation = store.setting('authorization_generation', 0)
     try:
+        from .managed import guarded_transport
+        transport, check = guarded_transport(store, c, transport)
         token = Portal(store).token(c)
         capabilities = transport(c["origin"], "/desktop/v1/capabilities", token)
         if (
@@ -94,7 +95,7 @@ def discover(store, transport=None):
         if not isinstance(rows, list) or any(not all(k in w for k in ("id", "name", "scopes")) for w in rows):
             raise Problem("Incomplete workspace discovery", 502)
         with store.tx():
-            if store.setting("active_account") != account:
+            if store.setting("active_account") != account or store.setting("authorization_generation", 0) != generation:
                 return
             store.db.execute(
                 "UPDATE connections SET capabilities=? WHERE origin=? AND account=?",
@@ -136,7 +137,7 @@ def discover(store, transport=None):
             store.set_setting("discovery", {"next": time.time() + 30, "state": "connected"})
     except Problem as e:
         with store.tx():
-            if store.setting("active_account") != account:
+            if store.setting("active_account") != account or store.setting("authorization_generation", 0) != generation:
                 return
             attempt = schedule.get("attempt", 0) + 1
             store.set_setting(

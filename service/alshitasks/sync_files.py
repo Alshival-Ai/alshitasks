@@ -9,6 +9,8 @@ from .portal import Portal
 
 
 def download_attachments(store, connection, attachments, transport, token):
+    from .managed import guarded_transport
+    transport, check = guarded_transport(store, connection, transport)
     from .portal import cached_item_id, Portal
 
     for meta in attachments:
@@ -23,6 +25,7 @@ def download_attachments(store, connection, attachments, transport, token):
                 continue
             if meta.get("deleted"):
                 with store.tx():
+                    check()
                     store.set_setting("file_deleted:" + ident, True)
                     store.set_setting("file_remote:" + ident, meta)
                 continue
@@ -31,6 +34,7 @@ def download_attachments(store, connection, attachments, transport, token):
             existing = store.db.execute("SELECT sha256 FROM attachments WHERE id=?", (ident,)).fetchone()
             if existing and existing[0] == meta["sha256"]:
                 with store.tx():
+                    check()
                     store.set_setting("file_remote:" + ident, meta)
                     store.set_setting("file_deleted:" + ident, False)
                     store.db.execute("UPDATE attachments SET name=? WHERE id=?", (meta["name"], ident))
@@ -40,6 +44,7 @@ def download_attachments(store, connection, attachments, transport, token):
                 continue
         path = store.paths.attachments / (ident + ".partial")
         with store.tx():
+            check()
             store.set_setting("attachment_local:" + connection["id"] + ":" + meta["id"], ident)
             if store.setting("download_sha:" + ident) != meta["sha256"]:
                 path.unlink(missing_ok=True)
@@ -88,6 +93,7 @@ def download_attachments(store, connection, attachments, transport, token):
                 path.unlink(missing_ok=True)
                 raise Problem("Attachment checksum mismatch", 409)
             with store.tx():
+                check()
                 if Portal(store).connection(connection["id"])["state"] != "connected":
                     return
                 pending = store.setting("file_job:" + ident, {})
@@ -107,6 +113,8 @@ def download_attachments(store, connection, attachments, transport, token):
 
 
 def upload_attachments(store, connection, transport, token):
+    from .managed import guarded_transport
+    transport, check = guarded_transport(store, connection, transport)
     """Durable upload sessions resume chunks and keep a stable completion identity."""
     import json
     import time
@@ -163,6 +171,7 @@ def upload_attachments(store, connection, transport, token):
                 }
                 # Persist the full initial request; lost replies must not change its base revision.
                 with store.tx():
+                    check()
                     if not job.get("request"):
                         job["request"] = begin
                         store.set_setting(key, job)
@@ -170,6 +179,7 @@ def upload_attachments(store, connection, transport, token):
                 result = response.get("result")
                 if result and (result.get("expired") or result.get("cancelled")):
                     with store.tx():
+                        check()
                         job["upload_id"] = uid()
                         job.pop("request", None)
                         store.set_setting(key, job)
@@ -195,6 +205,7 @@ def upload_attachments(store, connection, transport, token):
                         "result"
                     ]
             with store.tx():
+                check()
                 current = store.setting(key)
                 if current.get("upload_id") != job["upload_id"]:
                     continue
@@ -205,6 +216,7 @@ def upload_attachments(store, connection, transport, token):
                     store.set_setting("attachment_local:" + connection["id"] + ":" + result["id"], job["id"])
         except Exception as error:
             with store.tx():
+                check()
                 current = store.setting(key)
                 if current.get("upload_id") != job["upload_id"]:
                     continue

@@ -117,6 +117,7 @@ export function ResourceMonitoring({ item }: { item: Item }) {
         Refresh monitoring
       </button>
       {error && <p role="alert">{error}</p>}
+      {source === "portal" && data.cache && <p role="status">{data.cache.error || (data.cache.state === "loading" ? "Loading portal monitoring?" : data.cache.stale ? "Showing cached monitoring; refresh pending." : "Portal cache is up to date.")}</p>}
       {source === "portal" ? (
         <>
           <button
