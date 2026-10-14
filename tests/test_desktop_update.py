@@ -1,9 +1,13 @@
 import importlib.util
 import json
+import sys
 from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+
+if sys.platform != 'linux':
+    raise unittest.SkipTest('The Debian helper is Linux-only')
 
 spec = importlib.util.spec_from_file_location('desktop_update', Path(__file__).resolve().parents[1] / 'desktop/update-linux.py')
 update = importlib.util.module_from_spec(spec)
