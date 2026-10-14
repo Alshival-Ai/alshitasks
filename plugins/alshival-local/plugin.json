@@ -1,0 +1,30 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "alshival-local",
+  "version": "0.1.0",
+  "description": "Manage workspaces in the standalone Alshival desktop app on this computer.",
+  "author": {"name": "Alshival.Ai", "url": "https://alshival.ai"},
+  "homepage": "https://github.com/Alshival-Ai/alshitasks",
+  "license": "Apache-2.0",
+  "extensions": {
+    "com.openai": {
+      "requires_local_executor": true,
+      "onboardingSkill": "./skills/setup/SKILL.md",
+      "interface": {
+        "displayName": "Alshival Local",
+        "shortDescription": "Your local workspace in chat",
+        "longDescription": "Manage tasks, notes, boards, resources, and local monitoring through the Alshival desktop app on this computer. Requires the installed Windows or Linux app and a running local service. No portal account is required. Local access uses your desktop user's permissions; read-only setup is available. Portal synchronization is configured separately in the app. Use the Alshival portal plugin for direct team access through OAuth.",
+        "developerName": "Alshival.Ai",
+        "category": "Productivity",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://alshival.ai",
+        "supportURL": "https://alshival.ai/support/",
+        "privacyPolicyURL": "https://alshival.ai/privacy/",
+        "termsOfServiceURL": "https://alshival.ai/terms/",
+        "logo": "./assets/icon.png",
+        "composerIcon": "./assets/icon.png",
+        "defaultPrompt": ["Show my local Alshival tasks.", "Check my local resource health.", "Summarize my local workspace."]
+      }
+    }
+  }
+}

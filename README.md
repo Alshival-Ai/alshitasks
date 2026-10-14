@@ -2,6 +2,14 @@
 
 Standalone Windows and Linux desktop boards, notes, resources, logs and monitoring. No account, Docker, PostgreSQL server or cloud configuration is needed for local work. Supports Windows 10/11 x64 and Ubuntu 26.04 amd64. Licensed Apache-2.0.
 
+## Assistant plugins
+
+Use **Alshival Local** to connect a desktop assistant to this app without a portal
+account. The [plugin setup guide](plugins/alshival-local/README.md) includes quick
+Windows and Linux setup, an optional read-only connection, and a local Codex
+marketplace. Use the separate **Alshival** portal plugin for OAuth team access.
+Neither plugin enables synchronization automatically.
+
 ## Windows
 
 Install `alshitasks_<version>_x64_setup.exe` from the GitHub release. It installs for the current user without administrator privileges and includes Python and its dependencies. Launch **Alshival.Ai** from Start. Upgrades and uninstall preserve local data in `%LOCALAPPDATA%\Alshival.Ai`.
