@@ -78,6 +78,28 @@ keeps ordinary file jobs queued locally until it advertises the file capability.
 
 ## Managed Ubuntu account connection
 
+### Browser OAuth renewal
+
+Ordinary Windows/Linux OAuth connections renew automatically with 15-minute access
+tokens and a rolling 45-day desktop refresh lifetime. Active servers remain
+connected; a device returning within that offline window renews without browser
+sign-in. Explicit revocation and account eligibility checks still apply.
+
+Before rotating, the app saves a random `desktop_refresh_id` alongside the current
+credential in DPAPI/Secret Service. The portal atomically issues the successor
+and an encrypted receipt for that exact request. Lost responses or interrupted
+credential saves retry the same attempt, including across restarts. A recovered
+expired access token is renewed again before use. The app clears the attempt ID
+only after saving the successor. A failure to save the initial attempt prevents
+any rotation request. No worker silently discards local records on auth failure.
+
+OAuth `invalid_grant`/`invalid_client` responses stop replay of the rejected
+credential and display a reconnect action. Reconnecting the same account keeps
+workspace identities and drafts; a different account still requires sign-out.
+Already revoked tokens issued before receipt support require one fresh sign-in.
+
+### Managed enrollment
+
 Version 0.1.8 adds an explicit enrolled-computer credential provider. Ordinary
 installations still use browser OAuth and Linux Secret Service. On enrolled
 Alshival computers the root provisioner owns `/var/lib/alshival/desktop/<uid>`.

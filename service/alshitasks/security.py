@@ -45,7 +45,10 @@ class Secrets:
             path = self.windows_path(ident)
             temporary = path.with_suffix("." + secrets.token_hex(8) + ".tmp")
             try:
-                temporary.write_bytes(win32crypt.CryptProtectData(value.encode(), "Alshival.Ai", None, None, None, 1))
+                with temporary.open("wb") as stream:
+                    stream.write(win32crypt.CryptProtectData(value.encode(), "Alshival.Ai", None, None, None, 1))
+                    stream.flush()
+                    os.fsync(stream.fileno())
                 temporary.replace(path)
             finally:
                 temporary.unlink(missing_ok=True)

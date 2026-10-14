@@ -16,6 +16,7 @@ from .security import Secrets
 from .monitoring import NoRedirect
 
 MAX_RESPONSE = 8 * 1024**2
+RECONNECT = "Your portal session has expired or been revoked. Reconnect your Alshival.Ai account; local work is retained."
 
 
 def remote(origin, path, token=None, body=None, form=False):
@@ -48,6 +49,17 @@ def remote(origin, path, token=None, body=None, form=False):
                 raise Problem("Portal response too large", 413)
             return json.loads(data)
     except urllib.error.HTTPError as e:
+        # OAuth terminal errors use HTTP 400, unlike resource authorization's
+        # 401. Interpret only the token endpoint's bounded, known error codes;
+        # never display arbitrary response bodies or error descriptions.
+        if path == "/oauth/token/" and form and e.code in (400, 401):
+            try:
+                payload = e.read(4097)
+                detail = json.loads(payload) if len(payload) <= 4096 else None
+            except (ValueError, OSError):
+                detail = None
+            if isinstance(detail, dict) and detail.get("error") in ("invalid_grant", "invalid_client", "unauthorized_client"):
+                raise Problem(RECONNECT, 401) from None
         error = Problem(
             "Portal access rejected"
             if e.code in (401, 403)
@@ -187,23 +199,47 @@ class Portal:
         if c["state"] not in ("connected", "syncing"):
             raise Problem("Connection is disconnected; sign in again", 401)
         value = json.loads(Secrets().get(credential))
-        if value.get("expires_at", 0) < time.time() + 60:
+        if value.get("reauthorization_required"):
+            raise Problem(RECONNECT, 401)
+        for _ in range(2):
+            if value.get("expires_at", 0) >= time.time() + 60:
+                return value["access_token"]
             if not value.get("refresh_token"):
                 raise Problem("Sign in again to refresh authorization", 401)
-            refreshed = remote(
-                c["origin"],
-                "/oauth/token/",
-                body={
-                    "grant_type": "refresh_token",
-                    "refresh_token": value["refresh_token"],
-                    "client_id": value["client_id"],
-                    "resource": c["origin"] + "/desktop/v1",
-                },
-                form=True,
-            )
+            if not value.get("desktop_refresh_id"):
+                value["desktop_refresh_id"] = secrets.token_urlsafe(32)
+                # Save the attempt before contacting the server. A response lost
+                # during shutdown or credential replacement can then be replayed.
+                Secrets().put(credential, json.dumps(value))
+            try:
+                refreshed = remote(
+                    c["origin"],
+                    "/oauth/token/",
+                    body={
+                        "grant_type": "refresh_token",
+                        "refresh_token": value["refresh_token"],
+                        "client_id": value["client_id"],
+                        "resource": c["origin"] + "/desktop/v1",
+                        "desktop_refresh_id": value["desktop_refresh_id"],
+                    },
+                    form=True,
+                )
+            except Problem as error:
+                if error.status == 401:
+                    # Every workspace shares this credential and token_lock.
+                    # Persist the terminal state so workers and restarts cannot
+                    # repeatedly replay an invalid rotating refresh token.
+                    value["reauthorization_required"] = True
+                    Secrets().put(credential, json.dumps(value))
+                raise
             value.update(refreshed, expires_at=time.time() + refreshed.get("expires_in", 3600))
+            value.pop("desktop_refresh_id", None)
             Secrets().put(credential, json.dumps(value))
-        return value["access_token"]
+            # An old receipt can contain an expired access token. Persist its
+            # valid successor refresh token and renew once more before use.
+        if value.get("expires_at", 0) >= time.time() + 60:
+            return value["access_token"]
+        raise Problem("Portal session renewal is pending; retrying automatically", 503)
 
     def connect(self, origin):
         from . import managed
@@ -214,8 +250,8 @@ class Portal:
 
         if origin != ORIGIN:
             raise Problem("Sign-in is available only through Alshival.Ai")
-        if self.store.setting("active_account"):
-            raise Problem("Sign out before signing into another account", 409)
+        # Reconnecting the same account retains local identity and drafts.
+        # accounts.activate rejects a callback for a different signed-in account.
         if self.store.db.execute("SELECT 1 FROM connections WHERE state='authorizing'").fetchone():
             raise Problem("Sign-in is already open in your browser", 409)
         generation = self.store.setting("authorization_generation", 0)

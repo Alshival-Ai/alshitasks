@@ -733,6 +733,13 @@ function App() {
                     >
                       Sync now
                     </button>
+                    {!accountInfo.managed && accountInfo.status?.state === "sign-in-required" && (
+                      <button
+                        onClick={() => void work(() => window.tasks.connect())}
+                      >
+                        Reconnect account
+                      </button>
+                    )}
                     {!accountInfo.managed && (
                       <button
                         onClick={() =>
