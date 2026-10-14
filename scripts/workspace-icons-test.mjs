@@ -19,6 +19,7 @@ try {
     env: { ...process.env, ALSHITASKS_TEST_ROOT: root },
   });
   const page = await app.firstWindow();
+  await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setSize(1024,768));
   await page.getByRole("button", { name: /New task/ }).waitFor();
   const menu = page.locator(".wd-header-menu").first();
   await menu.getByRole("button", { name: "Settings", exact: true }).click();
@@ -53,6 +54,7 @@ try {
     .waitFor();
   await page.keyboard.press("Escape");
   assert.ok(await bell.evaluate((el) => el === document.activeElement));
+  await page.getByRole('button', {name:'Workspaces',exact:true}).first().click();
   await page
     .getByRole("button", { name: "Settings for Local workspace", exact: true })
     .first()
@@ -103,6 +105,7 @@ try {
     .locator('.wd-nav-list .workspace-icon use[href$="#rocket"]')
     .waitFor({ state: "attached" });
   await page.getByRole("button", { name: "Expand menu", exact: true }).click();
+  await page.getByRole('button', {name:'Workspaces',exact:true}).first().click();
   await page
     .getByRole("button", { name: "Settings for Local workspace", exact: true })
     .first()
