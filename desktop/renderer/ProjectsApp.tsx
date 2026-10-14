@@ -20,6 +20,8 @@ import {
 import { workspaceApi, LOCAL_WORKSPACE } from "./project-board/api";
 import {
   PaperCard,
+  NoteMarkdown,
+  MarkdownField,
   Relations,
   type Connect,
 } from "./project-board/ConnectedCards";
@@ -732,7 +734,7 @@ export function ProjectsApp({
                           {item.data.title}
                         </button>
                       </h3>
-                      <p>{item.data.body}</p>
+                      <NoteMarkdown text={item.data.body} items={items} open={open} />
                       <progress
                         aria-label={`${item.data.title} completion`}
                         value={
@@ -832,7 +834,7 @@ export function ProjectsApp({
                         >
                           {item.data.title}
                         </button>
-                        <p>{item.data.body}</p>
+                        <NoteMarkdown text={item.data.body} items={items} open={open} />
                       </div>
                     </article>
                   ))}
@@ -950,14 +952,7 @@ export function ProjectsApp({
                     defaultValue={selected?.data.title ?? ""}
                   />
                 </label>
-                <label>
-                  Description
-                  <textarea
-                    name="body"
-                    maxLength={20000}
-                    defaultValue={selected?.data.body ?? ""}
-                  />
-                </label>
+                <MarkdownField label="Description" name="body" defaultValue={selected?.data.body ?? ""} items={items} open={open} />
                 {kind === "task" ? (
                   <label>
                     Status
@@ -1044,14 +1039,7 @@ export function ProjectsApp({
                     defaultValue={selected?.data.due_on ?? ""}
                   />
                 </label>
-                <label>
-                  Acceptance criteria
-                  <textarea
-                    name="acceptance"
-                    maxLength={6000}
-                    defaultValue={selected?.data.acceptance ?? ""}
-                  />
-                </label>
+                <MarkdownField label="Acceptance criteria" name="acceptance" maxLength={6000} defaultValue={selected?.data.acceptance ?? ""} items={items} open={open} />
                 {kind === "task" && (
                   <label>
                     Deliverable
@@ -1360,7 +1348,7 @@ export function ProjectsApp({
                         item.data.parent_id === selected.id,
                     )
                     .map((item) => (
-                      <p key={item.id}>{item.data.body}</p>
+                      <NoteMarkdown key={item.id} text={item.data.body} items={items} open={open} />
                     ))}
                   <form
                     onSubmit={(event) => {
@@ -1388,10 +1376,7 @@ export function ProjectsApp({
                         .finally(() => setBusy(false));
                     }}
                   >
-                    <label>
-                      Reply
-                      <textarea name="reply" required />
-                    </label>
+                    <MarkdownField label="Reply" name="reply" required items={items} open={open} />
                     <button disabled={busy}>Add reply</button>
                   </form>
                 </>

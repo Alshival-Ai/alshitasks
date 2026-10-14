@@ -51,10 +51,30 @@ export function NoteMarkdown({
           ),
         }}
       >
-        {text || "Write a note…"}
+        {text}
       </Markdown>
     </div>
   );
+}
+
+export function MarkdownField({ label, name, defaultValue = "", maxLength = 20000, required = false, items = [], open = () => {} }: {
+  label: string; name: string; defaultValue?: string; maxLength?: number; required?: boolean; items?: Item[]; open?: (item: Item) => void;
+}) {
+  const input = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = useState(defaultValue);
+  useEffect(() => {
+    const form = input.current?.form;
+    const reset = () => queueMicrotask(() => setText(input.current?.value ?? ""));
+    form?.addEventListener("reset", reset);
+    return () => form?.removeEventListener("reset", reset);
+  }, []);
+  return <div className="project-markdown-field">
+    <label>{label}<textarea ref={input} name={name} defaultValue={defaultValue} maxLength={maxLength} required={required} onChange={event => setText(event.target.value)} /></label>
+    <details onToggle={() => setText(input.current?.value ?? "")}>
+      <summary>Preview {label.toLowerCase()} (Markdown)</summary>
+      <NoteMarkdown text={text || "Nothing to preview yet."} items={items} open={open} />
+    </details>
+  </div>;
 }
 
 export function NoteEditor({
@@ -1024,10 +1044,7 @@ function ResourceSettings({
           defaultValue={base.data.title}
         />
       </label>
-      <label>
-        Description
-        <textarea name="body" maxLength={20000} defaultValue={base.data.body} />
-      </label>
+      <MarkdownField key={base.revision} label="Description" name="body" defaultValue={base.data.body} />
       <label>
         Type
         <select
