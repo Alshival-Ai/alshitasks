@@ -46,6 +46,16 @@ class ManagedTests(unittest.TestCase):
             self.assertEqual(Portal(self.store).token(connection), 'rotated')
             self.assertEqual(self.store.db.execute('SELECT count(*) FROM connections').fetchone()[0], 1)
 
+    def test_unchanged_enrollment_does_not_repeat_network_discovery(self):
+        self.reconcile()
+        with self.store.tx():
+            self.store.set_setting('managed_next', 0)
+            self.store.set_setting('discovery', {'next':time.time()+300, 'capabilities_at':time.time()+3600})
+        expected = self.store.setting('discovery')
+        with patch('alshitasks.portal.remote', side_effect=AssertionError('unexpected network')):
+            managed.reconcile(self.store)
+        self.assertEqual(self.store.setting('discovery'), expected)
+
     def test_other_account_retained_and_fenced(self):
         self.store.db.execute('INSERT INTO connections VALUES(?,?,?,?,?,?,?)', ('old', managed.ORIGIN, '8', '', 'connected', None, '{}'))
         activate(self.store, 'old', {'account_id': '8'})
@@ -71,8 +81,9 @@ class ManagedTests(unittest.TestCase):
 
     def test_public_install_unchanged(self):
         self.value = None
-        managed.reconcile(self.store)
-        self.assertFalse(managed.enabled(self.store))
+        with patch.object(managed, 'ROOT', Path(self.temp.name) / 'unprovisioned'):
+            managed.reconcile(self.store)
+            self.assertFalse(managed.enabled(self.store))
 
     def test_explicit_root_never_uses_host_enrollment(self):
         self.store.paths.managed = False

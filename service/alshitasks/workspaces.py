@@ -1,6 +1,7 @@
 """Canonical workspace identities with private, account-specific sync connections."""
 
 from contextlib import contextmanager
+import json
 from .store import Problem
 
 LOCAL = "00000000-0000-4000-8000-000000000001"
@@ -8,11 +9,16 @@ LOCAL = "00000000-0000-4000-8000-000000000001"
 
 def catalog(store):
     from .workspace_icons import local_selection, selection
-    from .workspace_art import appearance
     local_art = local_selection(store)
     account = store.setting("active_account") or store.setting("last_account")
     counts = {r['connection']: r for r in store.db.execute(
         "SELECT connection, SUM(state='queued') AS pending, SUM(state IN ('draft','conflict')) AS trouble FROM outbox GROUP BY connection")}
+    notice_state = store.setting("notification_portal:" + (account['origin'] + '|' + account['id'] if account else ''), {})
+    notices_allowed = bool(store.setting('active_account') and notice_state.get('authorized')
+                           and notice_state.get('generation') == store.setting('authorization_generation', 0))
+    notice_counts = {r['workspace_id']: r['n'] for r in store.db.execute(
+        "SELECT workspace_id, COUNT(*) n FROM app_notifications WHERE source='portal' AND account=? AND read_at IS NULL AND archived_at IS NULL GROUP BY workspace_id",
+        ((account['origin'] + '|' + account['id']) if account else '',))}
     rows = [
         {
             "id": LOCAL,
@@ -47,7 +53,7 @@ def catalog(store):
                 "icon_sync": selection(store, r['id'])['sync_state'],
                 "local": False,
                 "kind": meta.get("kind", "customer"),
-                "unread": meta.get("unread"),
+                "unread": (notice_counts.get(r["workspace"], 0) if notices_allowed and r["state"] == "connected" else 0) if "notification-sync-v1" in json.loads(r["capabilities"]).get("features", []) else meta.get("unread"),
                 "portal_origin": r["origin"],
                 "portal_workspace_id": r["workspace"],
                 "settings_url": meta.get("settings_url", ""),

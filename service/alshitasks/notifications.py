@@ -94,7 +94,15 @@ def rows(s, q, owner=False):
     q, extra = validate(q, owner)
     a, ident = account(s)
     status = s.setting("notification_portal:" + ident, {})
-    if status.get("authorized") and time.time() - status.get("last_success", 0) > 90:
+    healthy = False
+    if a:
+        from .sync_schedule import live
+        from .portal import Portal
+        try:
+            healthy = live(s, Portal(s).connection(a['connection']))
+        except (Problem, KeyError):
+            pass
+    if status.get("authorized") and not healthy and time.time() - status.get("last_success", 0) > 90:
         status = dict(status, stale=True, error="Portal notifications need refreshing.")
     if status.get('generation') != s.setting('authorization_generation', 0):
         status = dict(status, stale=True, authorized=False)
@@ -199,7 +207,14 @@ def sync_portal(s, force=False):
             with s.tx():
                 _, key = account(s)
                 state = s.setting("notification_portal:" + key, {})
-                state.update(page=1, filter="all", seen=None, stale=True)
+                from .portal import Portal
+                active, _ = account(s)
+                connection = Portal(s).connection(active['connection']) if active else None
+                incremental = connection and 'notification-sync-v1' in json.loads(connection['capabilities']).get('features', [])
+                if incremental:
+                    state['next'] = 0
+                else:
+                    state.update(page=1, filter="all", seen=None, stale=True)
                 if key:
                     s.set_setting("notification_portal:" + key, state)
         for _ in range(200 if force else 1):
@@ -207,7 +222,7 @@ def sync_portal(s, force=False):
             with s.lock:
                 _, key = account(s)
                 state = s.setting("notification_portal:" + key, {})
-            if not key or not force or state.get("seen") is None:
+            if not key or not force or (state.get("seen") is None and not state.get("sync_more")):
                 return
         with s.tx():
             state["stale"] = True
@@ -223,9 +238,15 @@ def _sync_page(s, force=False):
         if not a:
             return
         state = s.setting("notification_portal:" + key, {})
-        if not force and state.get("next", 0) > time.time():
+        from .sync_schedule import live
+        connection = Portal(s).connection(a["connection"])
+        deadline = state.get("next", 0)
+        if not state.get("failures") and not live(s, connection):
+            deadline = min(deadline, state.get("last_success", 0) + 55)
+        if not force and deadline > time.time():
             return
         generation = s.setting("authorization_generation", 0)
+        notice_generation = s.setting("notification_notice:" + key, 0)
         adapter = Portal(s)
     try:
         with s.lock:
@@ -236,18 +257,32 @@ def _sync_page(s, force=False):
         # Notifications use the desktop audience, never the rate-limited public MCP.
         page = state.get("page", 1)
         filter_ = state.get("filter", "all")
-        result = send(
-            connection["origin"],
-            "/desktop/v1/notifications?" + urlencode({"filter": filter_, "page": page, "limit": 50}),
-            token,
-        )
+        incremental = "notification-sync-v1" in json.loads(connection["capabilities"]).get("features", [])
+        path = ("/desktop/v1/notifications/sync?" + urlencode({"cursor": state.get("sync_cursor", "")}) if incremental
+                else "/desktop/v1/notifications?" + urlencode({"filter": filter_, "page": page, "limit": 50}))
+        result = send(connection["origin"], path, token)
+        if incremental and result.get("reset"):
+            with s.tx():
+                check()
+                if account(s)[1] == key and s.setting("authorization_generation", 0) == generation:
+                    state.update(sync_cursor="", seen=None, stale=True, authorized=False, sync_more=True, next=0)
+                    s.set_setting("notification_portal:" + key, state)
+            return
         if not isinstance(result.get("items"), list) or not isinstance(result.get("workspaces"), list):
             raise Problem("Portal notification API unavailable", 503)
         with s.tx():
             if account(s)[1] != key or s.setting("authorization_generation", 0) != generation:
                 return
+            check()
             first = not state.get("initialized")
             seen = state.get("seen") or uid()
+            if incremental and not result.get("snapshot"):
+                seen = state.get("seen") or "delta"
+                removed = result.get("removed", [])
+                if not isinstance(removed, list) or not result.get("cursor"):
+                    raise Problem("Invalid notification checkpoint", 502)
+                for remote_id in removed:
+                    s.db.execute("DELETE FROM app_notifications WHERE source='portal' AND account=? AND remote_id=? AND NOT EXISTS(SELECT 1 FROM notification_actions a WHERE a.notification_id=app_notifications.id)", (key, str(uuid.UUID(remote_id))))
             for item in result["items"]:
                 remote_id = str(uuid.UUID(item["id"]))
                 ident = str(uuid.uuid5(uuid.NAMESPACE_URL, key + ":notification:" + remote_id))
@@ -273,14 +308,14 @@ def _sync_page(s, force=False):
                     ),
                 )
             next_page = result.get("next_page")
-            complete = not next_page and filter_ == "archived"
-            if complete:
+            complete = bool(result.get("complete")) if incremental else not next_page and filter_ == "archived"
+            if complete and (not incremental or result.get("snapshot")):
                 s.db.execute(
                     "DELETE FROM app_notifications WHERE source='portal' AND account=? AND seen!=? AND NOT EXISTS(SELECT 1 FROM notification_actions a WHERE a.notification_id=app_notifications.id)",
                     (key, seen),
                 )
             state.update(
-                authorized=True,
+                authorized=not (incremental and result.get('snapshot') and not complete),
                 generation=generation,
                 workspaces=result["workspaces"],
                 last_success=time.time(),
@@ -291,8 +326,14 @@ def _sync_page(s, force=False):
                 page=next_page or 1,
                 filter=filter_ if next_page else ("archived" if filter_ == "all" else "all"),
                 seen=None if complete else seen,
-                next=time.time() + (30 if complete else 2),
+                next=time.time() + (notification_interval(s, connection) if complete else 0),
             )
+            if s.setting("notification_notice:" + key, 0) != notice_generation:
+                state["next"] = 0
+            if incremental:
+                if not isinstance(result.get("cursor"), str) or not result["cursor"]:
+                    raise Problem("Invalid notification checkpoint", 502)
+                state.update(sync_cursor=result["cursor"], sync_more=not complete)
             s.set_setting("notification_portal:" + key, state)
     except Exception as exc:
         with s.tx():
@@ -472,3 +513,8 @@ def pending(s):
             (cutoff,),
         )
         return [dict(r) for r in records]
+
+
+def notification_interval(store, connection):
+    from .sync_schedule import interval
+    return interval(store, connection)

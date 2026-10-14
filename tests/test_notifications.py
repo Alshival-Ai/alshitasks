@@ -282,3 +282,59 @@ class MonitoringNotifications(unittest.TestCase):
                 "active_account", {"origin": "https://alshival.ai", "id": "8", "connection": uid()}
             )
         self.assertEqual(self.feed()["items"], [])
+
+
+class IncrementalNotifications(MonitoringNotifications):
+    def incremental_fixture(self):
+        self.portal_fixture()
+        with self.s.tx():
+            self.s.db.execute("UPDATE connections SET capabilities=?", ('{"features":["notification-sync-v1"]}',))
+        return self.portal_items[0]
+
+    def page(self, items=(), cursor='checkpoint', complete=True, snapshot=False, removed=()):
+        return dict(items=list(items), cursor=cursor, complete=complete, snapshot=snapshot,
+                    removed=list(removed), reset=False, workspaces=[])
+
+    def sync(self, response, force=False):
+        with patch('alshitasks.portal.Portal.token', return_value='fixture'), patch('alshitasks.portal.remote', return_value=response):
+            with self.s.tx():
+                _, key = notifications.account(self.s)
+                state = self.s.setting('notification_portal:' + key, {})
+                state['next'] = 0
+                self.s.set_setting('notification_portal:' + key, state)
+            notifications.sync_portal(self.s, force)
+
+    def test_snapshot_completion_delta_and_removal(self):
+        item = self.incremental_fixture()
+        self.sync(self.page([item], snapshot=True))
+        self.assertEqual(len(self.feed()['items']), 1)
+        self.assertEqual(notifications.pending(self.s), [])
+        new = dict(item, id=uid(), title='New notification')
+        self.sync(self.page([new], cursor='next'))
+        self.assertEqual(len(self.feed()['items']), 2)
+        self.assertEqual(len(notifications.pending(self.s)), 1)
+        self.sync(self.page(removed=[item['id']]))
+        self.assertEqual([r['title'] for r in self.feed()['items']], ['New notification'])
+
+    def test_partial_snapshot_and_reset_preserve_existing_rows(self):
+        item = self.incremental_fixture()
+        self.sync(self.page([item], snapshot=True))
+        self.sync({'reset': True})
+        self.assertEqual(self.s.db.execute("SELECT count(*) FROM app_notifications WHERE source='portal'").fetchone()[0], 1)
+        self.sync(self.page([], snapshot=True, complete=False, cursor='partial'))
+        self.assertEqual(self.s.db.execute("SELECT count(*) FROM app_notifications WHERE source='portal'").fetchone()[0], 1)
+        self.sync(self.page([], snapshot=True, complete=True))
+        self.assertEqual(self.s.db.execute("SELECT count(*) FROM app_notifications WHERE source='portal'").fetchone()[0], 0)
+
+    def test_notice_during_fetch_is_not_lost(self):
+        item = self.incremental_fixture()
+        self.sync(self.page([item], snapshot=True))
+        def during(*args):
+            _, key = notifications.account(self.s)
+            with self.s.tx():
+                self.s.set_setting('notification_notice:' + key, 2)
+            return self.page()
+        with patch('alshitasks.portal.Portal.token', return_value='fixture'), patch('alshitasks.portal.remote', side_effect=during):
+            notifications.sync_portal(self.s, True)
+        _, key = notifications.account(self.s)
+        self.assertEqual(self.s.setting('notification_portal:' + key)['next'], 0)

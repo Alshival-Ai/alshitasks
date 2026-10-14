@@ -75,15 +75,22 @@ def discover(store, transport=None):
     with store.lock:
         account = store.setting("active_account")
         schedule = store.setting("discovery", {})
-        if not account or schedule.get("next", 0) > time.time():
+        if not account:
             return
         c = Portal(store).connection(account["connection"])
+        from .sync_schedule import discovery_due
+        if not discovery_due(store, c, schedule):
+            return
         generation = store.setting('authorization_generation', 0)
     try:
         from .managed import guarded_transport
         transport, check = guarded_transport(store, c, transport)
         token = Portal(store).token(c)
-        capabilities = transport(c["origin"], "/desktop/v1/capabilities", token)
+        capabilities = json.loads(c["capabilities"])
+        capabilities_at = schedule.get("capabilities_at", 0)
+        if time.time() >= capabilities_at:
+            capabilities = transport(c["origin"], "/desktop/v1/capabilities", token)
+            capabilities_at = time.time() + 3600
         if (
             capabilities.get("resource") != c["origin"] + "/desktop/v1"
             or str(capabilities.get("account_id")) != c["account"]
@@ -135,7 +142,9 @@ def discover(store, transport=None):
                         "UPDATE outbox SET state='draft',reason='Workspace access removed' WHERE connection=? AND state='queued'",
                         (r[0],),
                     )
-            store.set_setting("discovery", {"next": time.time() + 30, "state": "connected"})
+            from .sync_schedule import interval
+            store.set_setting("discovery", {"next": time.time() + interval(store, c), "state": "connected",
+                                            "last_success": time.time(), "capabilities_at": capabilities_at})
             from .log_permissions import discovered
             for row in store.db.execute(
                 "SELECT * FROM connections WHERE origin=? AND account=? AND workspace!=''",

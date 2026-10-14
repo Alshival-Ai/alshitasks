@@ -19,7 +19,16 @@ MAX_RESPONSE = 8 * 1024**2
 RECONNECT = "Your portal session has expired or been revoked. Reconnect your Alshival.Ai account; local work is retained."
 
 
+_http_slots = threading.BoundedSemaphore(2)
+
+
 def remote(origin, path, token=None, body=None, form=False):
+    # One active account per service; SSE has a separate long-lived connection.
+    with _http_slots:
+        return _remote(origin, path, token, body, form)
+
+
+def _remote(origin, path, token=None, body=None, form=False):
     u = urlsplit(origin)
     if (
         u.scheme != "https"
@@ -33,7 +42,7 @@ def remote(origin, path, token=None, body=None, form=False):
         raise Problem("HTTPS portal origin required")
     if not path.startswith("/") or path.startswith("//"):
         raise Problem("Invalid portal path")
-    headers = {"X-Alshival-Desktop-Features": "task-taxonomy-v1"}
+    headers = {"X-Alshival-Desktop-Features": "task-taxonomy-v1,efficient-sync-v1"}
     if token:
         headers["Authorization"] = "Bearer " + token
     data = None
