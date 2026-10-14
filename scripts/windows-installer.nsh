@@ -1,6 +1,8 @@
 !include "getProcessInfo.nsh"
 Var pid
-Var previousStartup
+!ifndef BUILD_UNINSTALLER
+  Var previousStartup
+!endif
 
 !macro customInit
   ReadRegStr $previousStartup HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Alshival.Ai"
