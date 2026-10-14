@@ -23,10 +23,11 @@ try {
     name: "project_create", arguments: { kind: "task", data: { title: "Windows persistence fixture" }, idempotency_key: crypto.randomUUID() },
   }));
   const cli = (...args) => JSON.parse(execFileSync(path.join(appPath, "resources/python/python.exe"),
-    [path.join(appPath, "resources/app/service/alshitasks-cli.py"), "--root", root, ...args], { encoding: "utf8", windowsHide: true }));
+    [path.join(appPath, "resources/app/service/alshitasks-cli.py"), "--root", root, ...args], { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] }));
   assert.equal(cli("status").paused, false);
-  cli("pause"); assert.equal(cli("status").paused, true);
-  cli("resume"); assert.equal(cli("status").paused, false);
+  assert.throws(() => cli("pause"), /Global pause has been retired/);
+  assert.throws(() => cli("resume"), /Global pause has been retired/);
+  assert.equal(cli("status").paused, false);
   await page.evaluate(() => window.tasks.service("restart"));
   assert.equal((await page.evaluate(() => window.tasks.service("status"))).running, true);
   const reopened = await page.evaluate(id => window.tasks.request("/v1/mcp", "POST", {
@@ -41,7 +42,7 @@ try {
   await page.screenshot({ path: "build/windows-desktop.png" });
   assert.deepEqual(errors, []);
   await page.evaluate(() => window.tasks.service("stop"));
-  console.log("Packaged Windows desktop: launch, authenticated service, pause/resume, restart, and stop passed.");
+  console.log("Packaged Windows desktop: launch, authenticated service, legacy pause retirement, restart, and stop passed.");
 } finally {
   await app?.close();
   // All paths here belong to the fixture root created above.

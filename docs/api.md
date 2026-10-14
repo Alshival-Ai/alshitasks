@@ -216,3 +216,20 @@ before editing; cached revisions describe the local copy and are not a promise
 that the portal has committed a change. Queued changes, permission failures and
 conflicts remain visible in workspace sync status. Local-only workspaces and
 local log/monitoring tools remain desktop extensions, not portal resources.
+
+
+### Optional portal compatibility
+
+`GET /v1/settings` retains `paused: false` and adds `pause_migration` when suspended
+collectors were migrated. `PATCH /v1/settings` with `paused` returns HTTP 410 with
+individual monitoring/forwarding, account disconnection and Stop service alternatives.
+
+Owner notification responses add `pending_actions`. Actions save locally and queue
+portal synchronization; `POST /v1/notifications/refresh` returns
+`{"refreshed": false, "scheduled": true}` immediately. Agent reads do not wait on the
+portal and omit stale or unauthorized portal notifications.
+
+`GET /v1/portal/logs` and `/v1/portal/monitoring` retain payload fields and add a `cache`
+object with `state`, `stale`, `updated_at`, `pending` and `error`. Repeat reads pick up
+background refresh results. Empty results with `state: loading` are not a completed
+remote query. Cached data remains scoped to its account and connection.

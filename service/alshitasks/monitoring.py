@@ -236,8 +236,15 @@ def claim_forward(store, target=None):
     )
     if not row:
         return
-    store.db.execute("UPDATE forward_queue SET next_at=? WHERE id=? AND target=?", (time.time() + 60, row['id'], row['target']))
-    return dict(row)
+    lease = time.time() + 60
+    store.db.execute("UPDATE forward_queue SET next_at=? WHERE id=? AND target=?", (lease, row['id'], row['target']))
+    return dict(row, lease=lease)
+
+
+def forward_valid(store, row):
+    return store.db.execute("""SELECT 1 FROM forward_queue q JOIN forwarding f ON f.id=q.target
+        WHERE q.id=? AND q.target=? AND q.next_at=? AND f.enabled=1 AND f.destination=? AND f.credential=?""",
+        (row['id'], row['target'], row['lease'], row['destination'], row['credential'])).fetchone() is not None
 
 
 def forward_once(store, secrets=None, target=None):
@@ -252,16 +259,23 @@ def forward_once(store, secrets=None, target=None):
             data=forward_payload(row["destination"], row["data"]),
             headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
         )
+        with store.lock:
+            if not forward_valid(store, row):
+                return
         with urllib.request.build_opener(NoRedirect).open(request, timeout=8) as response:
             if not 200 <= response.status < 300:
                 raise ValueError()
         with store.tx():
+            if not forward_valid(store, row):
+                return
             store.db.execute("DELETE FROM forward_queue WHERE id=? AND target=?", (row["id"], row["target"]))
             store.set_setting(
                 "forward_status:" + row["target"], {"state": "connected", "message": "Last batch delivered."}
             )
     except Exception as error:
         with store.tx():
+            if not forward_valid(store, row):
+                return
             permanent = (
                 isinstance(error, urllib.error.HTTPError)
                 and 400 <= error.code < 500

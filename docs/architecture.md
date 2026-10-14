@@ -162,3 +162,35 @@ Settings → Sync details shows delivery health, last sync/notification and retr
 A live-stream failure displays Reconnecting when HTTP sync still works; an HTTP
 outage displays Offline—changes saved locally. Initial/full snapshots and binary
 file transfers can take longer than a small incremental edit.
+
+
+## Optional portal isolation
+
+The active account, connection identity/state and authorization generation fence portal
+requests and their commits. Disconnect invalidates in-flight results; credential cleanup
+runs outside SQLite locks. OAuth registration, renewal and online shared-resource checks
+also run outside the local HTTP transaction. SSH still requires current online permission
+for a shared resource; a failed check blocks that action without blocking local work.
+
+Monitoring, forwarding, retention, graph synchronization, attachments, inbox polling,
+portal event listeners, icons and portal resource-cache refreshes run independently.
+Forwarding and resource-cache workers each have at most four active requests. Forwarding
+claims a short durable lease and validates the target before sending and committing.
+Retention uses its own SQLite connection, leaving local workspace reads independent.
+
+Notification read/unread and archive/restore actions commit locally before returning.
+SQLite coalesces pending actions by notification and field, with a unique version for each
+new action. A worker acknowledges only the version sent. Refreshes overlay pending local
+fields and retain pending notifications when remote pagination omits them. Retry state
+survives restart and account changes never replay another account's queue. Agent reads
+use authorized portal cache no older than 90 seconds; otherwise they return local alerts
+and schedule asynchronous refresh. Explicit permission failures invalidate authorization.
+
+Portal logs and monitoring return account/connection-scoped cached payloads plus `cache`
+metadata (`state`, `stale`, `updated_at`, `pending`, `error`). Reads schedule bounded refresh
+work. Empty caches report loading/unavailable while local data remains usable.
+
+Global pause is retired. Existing paused installations migrate enabled checks and forwarding
+destinations to disabled, preserving configuration and queues. A persistent settings message
+explains individual re-enablement. Connected accounts synchronize automatically, including
+managed Ubuntu accounts. Legacy `paused` remains false; API mutations return HTTP 410.

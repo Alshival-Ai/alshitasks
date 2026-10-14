@@ -1,7 +1,7 @@
 import json
 from urllib.parse import urlsplit, parse_qs
 from .store import Problem, now, uid
-from .security import authorize, grant_create, Secrets
+from .security import authorize, grant_create
 from . import files, monitoring, ssh
 from pathlib import Path
 from .platform_support import mcp_command
@@ -336,9 +336,7 @@ class API:
                 if "notification_toasts" in body and type(body["notification_toasts"]) is not bool:
                     raise Problem("Invalid toast preference")
                 if "retention" in body:
-                    self.logs.retain(**body["retention"])
-                if "paused" in body and not isinstance(body["paused"], bool):
-                    raise Problem("Invalid pause setting")
+                    self.logs.validate_retention(**body["retention"])
                 if (
                     "http_port" in body
                     and body["http_port"] is not None
@@ -428,10 +426,6 @@ class API:
                 return {"aliases": [dict(r) for r in s.db.execute("SELECT * FROM aliases")]}
         if path == "/v1/ssh/open" and method == "POST":
             return ssh.open_terminal(s, resource)
-        if path == "/v1/secret" and method == "POST":
-            ident = uid()
-            Secrets().put(ident, body["value"])
-            return {"id": ident}
         if path == "/v1/forwarding":
             if not owner:
                 raise Problem("Desktop owner authorization required", 403)
@@ -497,17 +491,6 @@ class API:
                 s.db.execute("UPDATE forwarding SET enabled=1 WHERE id=?", (body["id"],))
                 s.db.execute("UPDATE forward_queue SET next_at=0 WHERE target=?", (body["id"],))
                 return {"retrying": True}
-        if path == "/v1/agent-grants" and method == "POST":
-            result = grant_create(s, body)
-            Secrets().put(result["id"], result["token"])
-            return {
-                "id": result["id"],
-                "config": {
-                    "mcpServers": {
-                        "alshitasks": mcp_command(result["id"])
-                    }
-                },
-            }
         if path.startswith("/v1/portal"):
             from .portal import Portal
 
@@ -525,19 +508,6 @@ class API:
                     if r["connection"] in allowed
                 ]
             }
-        if path == "/v1/drafts/resubmit" and method == "POST":
-            from .portal import Portal, remote
-
-            row = s.db.execute("SELECT * FROM outbox WHERE id=? AND state='draft'", (body["id"],)).fetchone()
-            if not row:
-                raise Problem("Draft unavailable", 404)
-            adapter = Portal(s)
-            c = adapter.connection(row["connection"])
-            token = adapter.token(c)
-            remote(c["origin"], "/desktop/v1/workspaces/" + c["workspace"] + "/snapshot", token)
-            # Explicit retry keeps the immutable payload and idempotency identity.
-            s.db.execute("UPDATE outbox SET state='queued',reason='' WHERE id=?", (row["id"],))
-            return {"queued": True}
         if path == "/v1/conflicts":
             from .workspaces import catalog
             from .portal import decode

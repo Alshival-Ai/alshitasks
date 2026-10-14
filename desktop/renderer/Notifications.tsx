@@ -29,6 +29,7 @@ export function Notifications({
     [full, setFull] = useState(false),
     [items, setItems] = useState<Notice[]>([]),
     [unread, setUnread] = useState(0),
+    [pending, setPending] = useState(0),
     [filter, setFilter] = useState("all"),
     [source, setSource] = useState("all"),
     [query, setQuery] = useState(""),
@@ -74,6 +75,7 @@ export function Notifications({
     setItems(result.items);
     setNext(result.next_page);
     setPortal(result.portal);
+    setPending(result.pending_actions || 0);
     setUnread(result.unread_count);
   }
   useEffect(() => {
@@ -92,6 +94,7 @@ export function Notifications({
           setItems(result.items);
           setNext(result.next_page);
           setPortal(result.portal);
+          setPending(result.pending_actions || 0);
           setUnread(result.unread_count);
         }
       } catch (e) {
@@ -286,6 +289,12 @@ export function Notifications({
           </button>
           {portal?.stale && (
             <p role="status">
+              {pending > 0 && (
+                <p role="status">
+                  {pending} notification changes saved on this device;
+                  synchronization pending.
+                </p>
+              )}
               {portal.error} Saved portal notifications may be out of date.
             </p>
           )}

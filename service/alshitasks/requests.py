@@ -82,9 +82,16 @@ def handle(api, path, method, body, owner, token):
             row = require_item(store, resource)
             connection = Portal(store).connection(row['connection']) if row['connection'] else None
             remote_id = store.db.execute('SELECT remote_id FROM items WHERE id=?', (resource,)).fetchone()[0]
-            if connection:
+            if connection and (route != '/v1/forwarding' or method == 'POST'):
                 send, check = guarded_transport(store, connection, remote)
-        if connection:
+        online_check = check
+        def check():
+            online_check()
+            current = store.db.execute('SELECT connection,remote_id FROM items WHERE id=?', (resource,)).fetchone()
+            require_item(store, resource)
+            if not current or (current['connection'], current['remote_id']) != (row['connection'], remote_id):
+                raise Problem('Resource changed; retry the action', 409)
+        if connection and (route != '/v1/forwarding' or method == 'POST'):
             credential = Portal(store).token(connection)
             after = None
             while True:

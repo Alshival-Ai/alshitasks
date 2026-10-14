@@ -34,6 +34,11 @@ def due(store, connection):
 
 
 def sync_one(store, connection, force=False):
+    from .eligibility import capture, check
+    try:
+        authorization = capture(store, connection)
+    except Problem:
+        return
     ident = connection["id"]
     with store.lock:
         if not force and not due(store, connection):
@@ -45,12 +50,17 @@ def sync_one(store, connection, force=False):
             store.set_setting("sync:" + ident, {"state": "syncing"})
         sync_connection(store, connection)
         with store.tx():
+            check(store, connection, authorization)
             store.set_setting("sync_ack:" + ident, generation)
             store.set_setting("sync:" + ident, {"state": "up-to-date", "poll_at": time.time() + random.uniform(27, 30)})
         store.sync_wake.set()
     except Exception as error:
         status = error.status if isinstance(error, Problem) else 503
         with store.tx():
+            try:
+                check(store, connection, authorization)
+            except Problem:
+                return
             attempt = schedule.get("attempt", 0) + 1
             delay = max(getattr(error, "retry_after", 0), random.uniform(0.75, 1.25) * min(240, 2 ** min(attempt, 8)))
             store.set_setting("sync:" + ident, {

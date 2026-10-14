@@ -178,7 +178,7 @@ class LiveSync(unittest.TestCase):
 
     def test_signout_generation_fences_listener(self):
         with self.s.tx():
-            self.s.set_setting('active_account', {'id': self.c['account'], 'origin': self.c['origin']})
+            self.s.set_setting('active_account', {'id': self.c['account'], 'origin': self.c['origin'], 'connection': self.c['id']})
             self.assertTrue(live_sync.valid(self.s, self.c, 0))
             self.s.set_setting('authorization_generation', 1)
             self.assertFalse(live_sync.valid(self.s, self.c, 0))

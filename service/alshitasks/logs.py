@@ -189,7 +189,8 @@ class Logs:
             "next_cursor": cursor,
         }
 
-    def retain(self, days=7, max_bytes=1024**3):
+    @staticmethod
+    def validate_retention(days=7, max_bytes=1024**3):
         if (
             not isinstance(days, int)
             or not 1 <= days <= 365
@@ -197,6 +198,9 @@ class Logs:
             or not 1024**2 <= max_bytes <= 10 * 1024**3
         ):
             raise Problem("Retention must be 1..365 days and 1 MiB..10 GiB")
+
+    def retain(self, days=7, max_bytes=1024**3):
+        self.validate_retention(days, max_bytes)
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         with self.db:
             self.db.execute(

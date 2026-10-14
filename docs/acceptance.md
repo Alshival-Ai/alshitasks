@@ -16,7 +16,7 @@ Verified on Alshival on 2026-10-10 (America/Chicago):
 
 - Installed package `alshitasks` **0.1.3** on Ubuntu 26.04 amd64, displayed as **Alshival.Ai**, using the supplied icon pack.
 - Exact installed Electron package passed task creation, note title/body persistence, resource creation, all project views, Trash restore, all app tabs and sandbox/context-isolation checks on **X11 and Wayland**. Keyboard Escape closes the editor. Fixture prompts explicitly accept discarding already-verified saved content; broader keyboard/accessibility review remains part of operator acceptance.
-- Ordinary user first launch provisions the login service and an empty local board. Window close leaves the service active. Pause/resume and restart pass. `loginctl` reports `Linger=no`.
+- Ordinary user first launch provisions the login service and an empty local board. Window close leaves the service active. Retired pause/resume return actionable errors; individual monitoring/forwarding controls and restart pass. `loginctl` reports `Linger=no`.
 - Data-preserving upgrade from the initial 0.1.0 trial through 0.1.3 compares a fingerprint of tasks, notes, resources, comments, checklists, statuses, relationships, history, replay receipts, attachments and logs. All remain identical.
 - Fresh pinned Ubuntu 26.04 container installs package dependencies, repeats the preserving upgrade, starts/stops the service, denies a second Linux user access to the first user's data/socket, and preserves data after package removal. Image digest: `sha256:f144425ff09be612d6d9ad965196e9cdc23dae1f42110a8a11a3e9a8198759f7`.
 - The pilot supplies `/etc/alshitasks/team.json` with the non-secret portal URL. No shared credentials are installed in the application. A real Secret Service store/read/delete probe passes without printing its value.
@@ -116,3 +116,12 @@ This source is not installed or deployed. Pending release gates: PostgreSQL exec
 large-workspace latency measurements, live SSE/proxy and OAuth acceptance, scanner
 availability on the target portal, and packaged upgrade/graphical-machine checks.
 The existing 0.1.7 package remains installed. No new immutable release is published.
+
+
+Optional portal isolation regression coverage is in `tests/test_optional_portal.py`.
+The event-gated tests hold network or credential operations open, perform local reads,
+writes or signout on another thread, and require completion before releasing the held
+operation. Coverage includes coalesced notification ordering, mixed read-all, restart
+recovery, lost replies, account switches, stale agent reads, late cache responses and
+pause migration. Existing sync, managed Ubuntu, monitoring, backup and packaged desktop
+suites remain required for release.

@@ -3,7 +3,6 @@
 import json
 import time
 from .store import Problem, uid
-from .security import Secrets
 
 ORIGIN = "https://alshival.ai"
 
@@ -22,6 +21,8 @@ def activate(store, ident, capabilities):
     current = store.setting("active_account")
     if current and (current["id"], current["origin"]) != (account["id"], account["origin"]):
         raise Problem("Sign out before switching accounts", 409)
+    if not current or current.get('connection') != ident:
+        store.set_setting('authorization_generation', store.setting('authorization_generation', 0) + 1)
     store.db.execute('UPDATE connections SET capabilities=? WHERE id=?', (json.dumps(capabilities), ident))
     for row in store.db.execute("SELECT * FROM connections WHERE workspace!=''").fetchall():
         if (row["origin"], row["account"]) == (account["origin"], account["id"]):

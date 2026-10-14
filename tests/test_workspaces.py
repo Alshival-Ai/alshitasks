@@ -199,7 +199,7 @@ class Workspaces(unittest.TestCase):
 
     def test_signout_retains_data_and_relogin_identity(self):
         board = self.create(self.ids[0])
-        with self.s.tx(), patch("alshitasks.accounts.Secrets.delete"):
+        with self.s.tx(), patch("alshitasks.security.Secrets.delete", side_effect=AssertionError("Signout must not wait for credentials")):
             signout(self.s)
         self.assertEqual(self.s.item(board["id"])["data"]["title"], "Board")
         self.assertIsNone(self.s.setting("active_account"))

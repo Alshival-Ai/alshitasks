@@ -14,7 +14,7 @@ This document is a plan, not an implementation or deployment record.
 - Use **SQLite with WAL**, automatic migrations, and managed attachment storage. No Docker, PostgreSQL installation, cloud account, or Entra configuration is required.
 - Separate desktop UI, background service, domain logic, storage, and integration adapters within the new repository. Reuse the existing project-tool contract with provenance and conformance tests.
 - Keep each Linux user's data under their XDG data directory, configuration under their XDG configuration directory, and runtime sockets under their private runtime directory. Store credentials in Linux Secret Service; never silently fall back to plaintext credential storage.
-- Run one background service per user. Start it at login after initial setup; closing the window leaves sync, ingestion, and monitoring running. Provide explicit pause and stop controls. Do not enable systemd lingering automatically.
+- Run one background service per user. Start it at login after initial setup; closing the window leaves sync, ingestion, and monitoring running. Provide individual monitoring and forwarding controls and Stop service; global pause is retired. Do not enable systemd lingering automatically.
 - Ship Ubuntu 26.04 amd64 `.deb` packages first. The application package is `alshitasks`, independent of the existing `alshival` provisioning package. Broader Linux packaging and architectures follow after the pilot.
 - Use sandboxed renderers, context isolation, restrictive IPC, and packaged content. Open external websites in the system browser, following [Electron's security guidance](https://www.electronjs.org/docs/latest/tutorial/security).
 

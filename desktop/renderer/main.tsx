@@ -241,8 +241,19 @@ function App() {
     setLocalBoards(
       (await api("/v1/projects/boards?workspace_id=" + LOCAL_WORKSPACE)).boards,
     );
-    void api("/v1/portal/account").then(setAccountInfo).catch(() => setPortalError("Account status is temporarily unavailable."));
-    void api("/v1/portal/publish").then((r) => { setPublications(r.publications); setPortalError(""); }).catch(() => setPortalError("Publication history is temporarily unavailable."));
+    void api("/v1/portal/account")
+      .then(setAccountInfo)
+      .catch(() =>
+        setPortalError("Account status is temporarily unavailable."),
+      );
+    void api("/v1/portal/publish")
+      .then((r) => {
+        setPublications(r.publications);
+        setPortalError("");
+      })
+      .catch(() =>
+        setPortalError("Publication history is temporarily unavailable."),
+      );
     setGrants((await api("/v1/projects/keys")).keys);
     setConflicts((await api("/v1/conflicts")).conflicts);
     setDrafts((await api("/v1/drafts")).drafts);
@@ -554,8 +565,8 @@ function App() {
           </HeaderMenu>
           <span className="local-label">
             {workspace === LOCAL_WORKSPACE
-                ? "On this computer"
-                : syncLabel(workspaces.find((w) => w.id === workspace))}
+              ? "On this computer"
+              : syncLabel(workspaces.find((w) => w.id === workspace))}
           </span>
           <WindowChrome
             notifications={
@@ -731,13 +742,16 @@ function App() {
                     >
                       Sync now
                     </button>
-                    {!accountInfo.managed && accountInfo.status?.state === "sign-in-required" && (
-                      <button
-                        onClick={() => void work(() => window.tasks.connect())}
-                      >
-                        Reconnect account
-                      </button>
-                    )}
+                    {!accountInfo.managed &&
+                      accountInfo.status?.state === "sign-in-required" && (
+                        <button
+                          onClick={() =>
+                            void work(() => window.tasks.connect())
+                          }
+                        >
+                          Reconnect account
+                        </button>
+                      )}
                     {!accountInfo.managed && (
                       <button
                         onClick={() =>

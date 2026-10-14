@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'service'))
-from alshitasks import accounts, health, monitoring, notifications, resource_cache
+from alshitasks import health, monitoring, notifications, resource_cache
 from alshitasks.api import API
 from alshitasks.logs import Logs
 from alshitasks.paths import Paths
@@ -220,6 +220,99 @@ class OptionalPortal(unittest.TestCase):
                 resource_cache.refresh(self.store, key, job)
         self.held(operation, lambda: self.call('/v1/portal/signout', 'POST'))
         self.assertIsNone(self.store.setting(key))
+
+    def test_fresh_install_remains_usable_with_all_portal_traffic_blocked(self):
+        from alshitasks import files
+        with patch('alshitasks.portal.remote', side_effect=AssertionError('Unexpected portal traffic')):
+            self.assertIsNone(self.call('/v1/portal/account')['account'])
+            board = self.call('/v1/projects/items', 'POST', {'kind': 'board', 'data': {'title': 'Offline board'}, 'idempotency_key': uid()})
+            for kind in ('task', 'note'):
+                created = self.call('/v1/mcp', 'POST', {'name': 'project_create', 'arguments': {'kind': kind, 'data': {'title': 'Offline ' + kind, 'board_id': board['id']}, 'idempotency_key': uid()}})
+                self.assertEqual(created['data']['title'], 'Offline ' + kind)
+            self.assertTrue(self.call('/v1/projects/boards')['boards'])
+            self.assertTrue(self.call('/v1/workspaces')['workspaces'])
+            self.assertEqual(self.call('/v1/portal/publish')['publications'], [])
+            self.logs.ingest(self.resource, [{'id': uid(), 'timestamp': now(), 'severity': 'info', 'message': 'Offline log', 'attributes': {}}])
+            self.assertEqual(len(self.call('/v1/logs')['events']), 1)
+            with self.store.tx():
+                health.save(self.store, {'resource_id': self.resource, 'name': 'Heartbeat', 'config': {'kind': 'heartbeat'}})
+            health.tick(self.store)
+            self.assertTrue(self.call('/v1/monitoring')['checks'])
+            self.assertTrue(self.call('/v1/notifications')['items'])
+            destination = str(Path(self.temp.name) / 'offline-backup.zip')
+            self.call('/v1/backup', 'POST', {'path': destination})
+            self.assertEqual(files.validate_backup(destination)['format'], 'alshitasks-backup-v1')
+            self.store.db.close()
+            self.store = Store(self.paths)
+            self.api = API(self.store, self.logs)
+            self.assertTrue(self.call('/v1/projects/boards')['boards'])
+            self.assertTrue(self.call('/v1/notifications')['items'])
+
+    def test_online_resource_authorization_blocks_only_sensitive_action(self):
+        self.connect()
+        with self.store.tx():
+            self.store.db.execute('UPDATE items SET connection=?,remote_id=? WHERE id=?', (self.connection['id'], uid(), self.resource))
+        def operation(block):
+            def denied(*args, **kwargs):
+                block()
+                raise Problem('Membership revoked', 403)
+            with patch('alshitasks.portal.Portal.token', return_value='fixture'), patch('alshitasks.portal.remote', side_effect=denied), patch('alshitasks.ssh.launch_terminal') as launch:
+                with self.assertRaises(Problem) as error:
+                    self.call('/v1/ssh/open', 'POST', {'resource_id': self.resource})
+                self.assertEqual(error.exception.status, 403)
+                launch.assert_not_called()
+        self.held(operation, self.local_write)
+
+    def test_rate_limited_notification_action_retains_local_state_and_retry_after(self):
+        ident = self.portal_item()
+        self.call('/v1/notifications/actions', 'POST', {'id': ident, 'action': 'archive'})
+        error = Problem('Rate limited', 429)
+        error.retry_after = 120
+        with patch('alshitasks.portal.Portal.token', return_value='fixture'), patch('alshitasks.portal.remote', side_effect=error):
+            notifications.flush_actions(self.store)
+        self.assertTrue(self.call('/v1/notifications?filter=archived')['items'][0]['archived'])
+        self.assertGreater(self.store.db.execute('SELECT next_at FROM notification_actions').fetchone()[0], time.time() + 110)
+
+    def test_expired_authorization_cannot_expose_fresh_agent_cache(self):
+        ident = self.portal_item()
+        self.assertEqual(len(self.call('/v1/notifications?agent_read=1')['items']), 1)
+        self.call('/v1/notifications/actions', 'POST', {'id': ident, 'action': 'read'})
+        with patch('alshitasks.portal.Portal.token', side_effect=Problem('Expired credentials', 401)):
+            notifications.flush_actions(self.store)
+        self.assertEqual(self.call('/v1/notifications?agent_read=1')['items'], [])
+
+    def test_stalled_forwarding_destination_does_not_delay_another_destination(self):
+        from alshitasks.server import forwarding_loop
+        entered, delivered, release, stop = (threading.Event() for _ in range(4))
+        with self.store.tx():
+            for target in ('slow', 'fast'):
+                self.store.db.execute('INSERT INTO forwarding VALUES(?,?,?,?,1)', (target, 'https://' + target + '.example/logs', self.resource, 'key'))
+            monitoring.queue_forward(self.store, self.resource, [{'id': uid(), 'message': 'event'}])
+        def send(request, **kwargs):
+            if request.full_url.startswith('https://slow.'):
+                entered.set()
+                release.wait(5)
+            else:
+                delivered.set()
+            response = MagicMock()
+            response.__enter__.return_value.status = 200
+            return response
+        with patch('alshitasks.security.Secrets.get', return_value='fixture'), patch('urllib.request.OpenerDirector.open', side_effect=send):
+            worker = threading.Thread(target=forwarding_loop, args=(self.api, stop))
+            worker.start()
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertTrue(delivered.wait(2), 'One destination blocked another')
+                self.local_write()
+                with self.store.tx():
+                    health.save(self.store, {'resource_id': self.resource, 'name': 'Independent', 'config': {'kind': 'heartbeat'}})
+                health.tick(self.store)
+                self.assertTrue(self.call('/v1/notifications')['items'])
+            finally:
+                stop.set()
+                release.set()
+                worker.join(5)
+        self.assertFalse(worker.is_alive())
 
 
 if __name__ == '__main__':

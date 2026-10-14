@@ -276,7 +276,7 @@ def main():
     if args.command == "backup":
         result = call(paths, "/v1/backup", "POST", {"path": args.path})
     elif args.command in ("pause", "resume"):
-        result = call(paths, "/v1/settings", "PATCH", {"paused": args.command == "pause"})
+        raise Problem("Global pause has been retired. Disable individual monitoring checks or forwarding destinations, disconnect your portal account, or stop the service.", 410)
     elif args.command == "stop":
         result = call(paths, "/v1/stop", "POST", {})
     else:

@@ -1,7 +1,6 @@
 """Bounded asynchronous cache for optional portal resource views."""
 
 import hashlib
-import json
 import time
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlencode
@@ -53,13 +52,16 @@ def refresh(store, key, job):
             check(store, connection, generation)
             validate()
             store.set_setting(key, {'data': result, 'updated_at': time.time(), 'generation': generation})
-    except Exception:
+    except Exception as error:
         with store.tx():
             try:
                 check(store, connection, generation)
             except Problem:
                 return
             state = store.setting(key, {})
+            if isinstance(error, Problem) and error.status in (401, 403, 404):
+                state.pop('data', None)
+                state.pop('updated_at', None)
             state.update(error='Portal view temporarily unavailable', next_at=time.time() + 30)
             store.set_setting(key, state)
     finally:

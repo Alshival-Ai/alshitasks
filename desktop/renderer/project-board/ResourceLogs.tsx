@@ -162,7 +162,16 @@ export function ResourceLogs({ item }: { item: Item }) {
           ? "Stored on this computer. Logs are not included in project synchronization."
           : "Shows cached portal logs and refreshes them in the background."}
       </p>
-      {source === "portal" && cache && <p role="status">{cache.error || (cache.state === "loading" ? "Loading portal logs?" : cache.stale ? "Showing cached logs; refresh pending." : "Portal cache is up to date.")}</p>}
+      {source === "portal" && cache && (
+        <p role="status">
+          {cache.error ||
+            (cache.state === "loading"
+              ? "Loading portal logs?"
+              : cache.stale
+                ? "Showing cached logs; refresh pending."
+                : "Portal cache is up to date.")}
+        </p>
+      )}
       <form
         onSubmit={(e) => {
           e.preventDefault();

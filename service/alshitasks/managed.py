@@ -62,7 +62,7 @@ def snapshot():
 def enabled(store):
     if not store.paths.managed:
         return False
-    return bool(store.setting('managed_account')) or snapshot() is not None
+    return bool(store.setting('managed_account')) or (os.name != 'nt' and (ROOT / str(os.getuid())).exists())
 
 
 def token(store, connection):
@@ -84,6 +84,8 @@ def guarded_transport(store, connection, transport):
         if enabled(store):
             token(store, connection)
         result = transport(*args, **kwargs)
+        if enabled(store):
+            token(store, connection)
         check()
         return result
     return send, check
@@ -104,15 +106,16 @@ def reconcile(store, transport=None):
         store.set_setting('managed_account', True)
     if not value or value.get('status') != 'ready':
         with store.tx():
+            store.set_setting('authorization_generation', store.setting('authorization_generation', 0) + 1)
             store.set_setting('discovery', {'state': (value or {}).get('status', 'unavailable'), 'next': time.time() + 30})
         return
     try:
         capabilities = (transport or remote)(ORIGIN, '/desktop/v1/capabilities', value['token'])
         if capabilities.get('resource') != value['resource'] or str(capabilities.get('account_id')) != value['account_id']:
             raise Problem('Ubuntu account identity did not match the portal', 401)
+        # Credential retrieval stays outside the database transaction.
+        fresh = snapshot()
         with store.sync_lock, store.tx():
-            # Re-read after network I/O so revocation/rotation cannot activate stale state.
-            fresh = snapshot()
             if not fresh or fresh.get('generation') != value['generation'] or fresh.get('status') != 'ready':
                 return
             current = store.setting('active_account')

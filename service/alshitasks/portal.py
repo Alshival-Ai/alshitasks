@@ -276,6 +276,13 @@ class Portal:
         store = self.store
         finished = threading.Event()
 
+        def check_login():
+            with store.lock:
+                pending = store.db.execute('SELECT state FROM connections WHERE id=?', (ident,)).fetchone()
+                if (store.setting('authorization_generation', 0) != generation
+                        or not pending or pending['state'] != 'authorizing'):
+                    raise Problem('Sign-in was cancelled', 409)
+
         class Callback(http.server.BaseHTTPRequestHandler):
             def log_message(self, *args):
                 pass
@@ -296,6 +303,7 @@ class Portal:
                         if completed[0]:
                             raise Problem("Callback already used")
                         completed[0] = True
+                    check_login()
                     tokens = remote(
                         origin,
                         "/oauth/token/",
@@ -309,9 +317,11 @@ class Portal:
                         },
                         form=True,
                     )
+                    check_login()
                     capabilities = remote(origin, "/desktop/v1/capabilities", tokens["access_token"])
                     if capabilities.get("resource") != origin + "/desktop/v1":
                         raise Problem("Desktop audience mismatch")
+                    check_login()
                     Secrets().put(
                         ident,
                         json.dumps(
@@ -354,6 +364,7 @@ class Portal:
         completed = [False]
         finish_lock = threading.Lock()
         try:
+            check_login()
             client = remote(
                 origin,
                 "/oauth/register/",
@@ -434,61 +445,22 @@ class Portal:
                     )
                 ]
             }
-        if path == "/v1/portal/connect" and method == "POST":
-            from .accounts import ORIGIN
-
-            return self.connect(ORIGIN)
         if path in ("/v1/portal/logs", "/v1/portal/monitoring") and method == "GET":
             from .resource_cache import read
             return read(self.store, path, q)
         c = self.connection(body.get("connection") or q.get("connection"))
         if path == "/v1/portal/disconnect" and method == "POST":
-            from .managed import enabled
-
-            if enabled(self.store):
-                raise Problem("Connected through your Ubuntu account", 409)
-            self.store.set_setting("authorization_generation", self.store.setting("authorization_generation", 0) + 1)
-            self.store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (c["id"],))
-            self.store.db.execute(
-                "UPDATE outbox SET state='draft',reason='Disconnected' WHERE connection=? AND state='queued'",
-                (c["id"],),
-            )
-            credential = self.store.setting("credential:" + c["id"], c["id"])
-            active = [
-                dict(r)
-                for r in self.store.db.execute(
-                    "SELECT * FROM connections WHERE state IN ('connected','syncing')"
-                )
-            ]
-            if not any(self.store.setting("credential:" + r["id"], r["id"]) == credential for r in active):
-                self.store.set_setting("credential_cleanup:" + credential, True)
-            return {"disconnected": True, "local_copies_retained": True}
-        token = self.token(c)
-        if path == "/v1/portal/workspaces":
-            return remote(c["origin"], "/desktop/v1/workspaces", token)
-        if path == "/v1/portal/select" and method == "POST":
-            available = remote(c["origin"], "/desktop/v1/workspaces", token)["workspaces"]
-            if body["workspace"] not in [w["id"] for w in available]:
-                raise Problem("Workspace permission unavailable", 403)
-            # Separate cache connection per selected workspace; keep the original identity/account.
-            if c["workspace"] and c["workspace"] != body["workspace"]:
-                new = uid()
-                self.store.set_setting(
-                    "credential:" + new, self.store.setting("credential:" + c["id"], c["id"])
-                )
-                self.store.db.execute(
-                    "INSERT INTO connections VALUES(?,?,?,?,?,?,?)",
-                    (new, c["origin"], c["account"], body["workspace"], "connected", None, c["capabilities"]),
-                )
-                return {"selected": new}
-            self.store.db.execute(
-                "UPDATE connections SET workspace=?,cursor=NULL WHERE id=?", (body["workspace"], c["id"])
-            )
-            return {"selected": True}
+            from .accounts import signout
+            account = self.store.setting('active_account')
+            if account and (account['origin'], account['id']) != (c['origin'], c['account']):
+                raise Problem('Connection unavailable for this account', 404)
+            signout(self.store)
+            return {'disconnected': True, 'local_copies_retained': True}
         raise Problem("Portal endpoint unavailable", 404)
 
 
 def send_job(store, c, prefix, token, transport, job, tool, arguments):
+    from .eligibility import AuthorizationChanged
     key = "request:" + job["id"]
     with store.tx():
         request = store.setting(key)
@@ -499,7 +471,7 @@ def send_job(store, c, prefix, token, transport, job, tool, arguments):
     try:
         return transport(c["origin"], prefix + "/mutations", token, body=request)["result"]
     except Problem as error:
-        if error.status == 409:
+        if error.status == 409 and not isinstance(error, AuthorizationChanged):
             # A definitive rejection has no committed receipt; rebase on the next pull.
             with store.tx():
                 store.set_setting(key, None)
@@ -1088,43 +1060,9 @@ def sync_all(store):
                     "SELECT * FROM connections WHERE state='connected' AND workspace!=''"
                 )
             ]
+        from .sync_worker import sync_one
         for c in connections:
-            with store.lock:
-                schedule = store.setting("sync:" + c["id"], {})
-                pending = store.db.execute(
-                    "SELECT 1 FROM outbox WHERE connection=? AND state='queued'", (c["id"],)
-                ).fetchone()
-            if schedule.get("next", 0) > time.time():
-                continue
-            if c["cursor"] and not pending:
-                from datetime import datetime
-
-                if time.time() - datetime.fromisoformat(c["cursor"]).timestamp() < 30:
-                    continue
-            try:
-                with store.tx():
-                    store.set_setting("sync:" + c["id"], {"state": "syncing"})
-                sync_connection(store, c)
-                with store.tx():
-                    store.set_setting("sync:" + c["id"], {"state": "up-to-date"})
-            except Problem as e:
-                with store.tx():
-                    attempt = schedule.get("attempt", 0) + 1
-                    store.set_setting(
-                        "sync:" + c["id"],
-                        {
-                            "state": "attention" if e.status in (400, 401, 403, 409) else "offline",
-                            "error": str(e),
-                            "attempt": attempt,
-                            "next": time.time() + min(300, 2 ** min(attempt, 8)),
-                        },
-                    )
-                    if e.status in (401, 403):
-                        store.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (c["id"],))
-                        store.db.execute(
-                            "UPDATE outbox SET state='draft',reason='Authorization removed' WHERE connection=? AND state='queued'",
-                            (c["id"],),
-                        )
+            sync_one(store, c)
     finally:
         store.sync_lock.release()
 

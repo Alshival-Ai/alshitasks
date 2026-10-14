@@ -98,7 +98,17 @@ def rows(s, q, owner=False):
         status = dict(status, stale=True, error="Portal notifications need refreshing.")
     if status.get('generation') != s.setting('authorization_generation', 0):
         status = dict(status, stale=True, authorized=False)
-    workspaces = status.get("workspaces", [])
+    if a:
+        from .portal import Portal
+        try:
+            from .eligibility import capture
+            capture(s, Portal(s).connection(a['connection']))
+        except (Problem, KeyError):
+            status = dict(status, stale=True, authorized=False)
+    if s.setting('discovery', {}).get('state') == 'sign-in-required':
+        status = dict(status, stale=True, authorized=False)
+    revoked = {r[0] for r in s.db.execute("SELECT workspace FROM connections WHERE state='revoked'")}
+    workspaces = [w for w in status.get("workspaces", []) if w not in revoked]
     # Membership-revoked resources and other signed-in accounts never leak into the inbox.
     clauses = [
         "(n.source='local' OR (n.account=? AND ? AND (n.workspace_id IS NULL OR n.workspace_id IN (SELECT value FROM json_each(?)))))",
@@ -207,7 +217,6 @@ def sync_portal(s, force=False):
 
 def _sync_page(s, force=False):
     from .portal import Portal, remote
-    from .accounts import ORIGIN
 
     with s.lock:
         a, key = account(s)
@@ -360,9 +369,9 @@ def schedule_refresh(s, reset=True):
         if key:
             state = s.setting('notification_portal:' + key, {})
             if reset:
-                state.update(page=1, filter='all', seen=None, stale=True, next=0)
-            elif state.get('last_success', 0) < time.time() - 90:
-                state['next'] = 0
+                state.update(page=1, filter='all', seen=None, stale=True, next=state.get('next', 0) if state.get('failures') else 0)
+            else:
+                state.setdefault('next', 0)
             s.set_setting('notification_portal:' + key, state)
 
 
@@ -387,10 +396,18 @@ def flush_actions(s):
                 check()
                 s.db.execute("DELETE FROM notification_actions WHERE notification_id=? AND field=? AND version=?",
                              (job['notification_id'], job['field'], job['version']))
-        except Exception:
+        except Exception as error:
             with s.tx():
+                try:
+                    check()
+                except Problem:
+                    return
+                if isinstance(error, Problem) and error.status in (401, 403):
+                    state = s.setting('notification_portal:' + key, {})
+                    state.update(authorized=False, stale=True)
+                    s.set_setting('notification_portal:' + key, state)
                 s.db.execute("UPDATE notification_actions SET attempts=attempts+1,next_at=? WHERE notification_id=? AND field=? AND version=?",
-                             (time.time() + min(300, 2 ** min(8, job['attempts'] + 1)),
+                             (time.time() + max(getattr(error, 'retry_after', 0), min(300, 2 ** min(8, job['attempts'] + 1))),
                               job['notification_id'], job['field'], job['version']))
             return
 
@@ -451,7 +468,7 @@ def pending(s):
         )
         cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
         s.db.execute(
-            "DELETE FROM app_notifications WHERE created_at<? AND (resource_id IS NULL OR NOT EXISTS(SELECT 1 FROM health_incidents h WHERE h.resource_id=app_notifications.resource_id AND h.closed_at IS NULL))",
+            "DELETE FROM app_notifications WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM notification_actions a WHERE a.notification_id=app_notifications.id) AND (resource_id IS NULL OR NOT EXISTS(SELECT 1 FROM health_incidents h WHERE h.resource_id=app_notifications.resource_id AND h.closed_at IS NULL))",
             (cutoff,),
         )
         return [dict(r) for r in records]

@@ -32,7 +32,7 @@ class RecordParity(unittest.TestCase):
         self.addCleanup(self.fixture.tearDown)
         self.s = self.fixture.s
         self.c = self.fixture.c
-        self.s.set_setting('active_account', {'origin': self.c['origin'], 'id': self.c['account']})
+        self.s.set_setting('active_account', {'origin': self.c['origin'], 'id': self.c['account'], 'connection': self.c['id']})
         self.s.set_setting('workspace:' + self.c['id'], {'name': 'Fixture', 'scopes': ['project:read', 'project:write']})
         self.s.db.commit()
         self.fixture.sync()
