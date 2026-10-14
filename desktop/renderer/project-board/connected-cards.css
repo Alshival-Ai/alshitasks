@@ -704,3 +704,7 @@
   font-size: 26px;
   line-height: 1.3;
 }
+
+.projects-app .project-markdown-field { min-width: 0; }
+.projects-app .project-markdown-field label { display: grid; gap: 6px; }
+.projects-app .project-markdown-field summary { cursor: pointer; font-size: .85em; margin: 8px 0; }
