@@ -208,8 +208,10 @@ immediate fetches. Workspace unread badges use the authorized local cache.
 Capabilities refresh at sign-in, reconnect and hourly; discovery follows events and
 five-minute healthy reconciliation. Older servers retain the existing feed path.
 
-The efficiency rollout starts with a single-user service override using the existing
-private data directory. Keep this branch off `main` until at least 24 hours of pilot
-observation verifies transport recovery, outbox delivery, permission changes and
-host health. Pushing `main` triggers the public desktop/fleet release. Removing the
-pilot override restores the installed service without deleting user data.
+The efficiency rollout began with a single-user service override using the existing
+private data directory. On 2026-10-14, after reviewing reduced Pi13 CPU usage and
+healthy pilot synchronization, Samuel authorized public deployment before the
+planned 24-hour observation finished. Monitoring continues; this is not a completed
+24-hour acceptance result. Pushing `main` triggers the Windows and Ubuntu package
+tests and publishes only after both pass. Once the stable package is installed,
+remove the pilot override and restart the installed service, retaining user data.
