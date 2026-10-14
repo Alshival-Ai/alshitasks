@@ -215,7 +215,15 @@ class API:
             from .cloud_logs import identity
 
             workspace, public_resource = identity(s, resource)
+            from .log_permissions import availability, schedule_discovery, epoch
+            connection = s.db.execute('SELECT * FROM connections WHERE id=?', (row['connection'],)).fetchone()
+            portal_logs = availability(s, connection)
+            if connection and portal_logs == 'unknown':
+                schedule_discovery(s)
             return {
+                "portal_logs": portal_logs,
+                "portal_logs_context": f"{s.setting('authorization_generation', 0)}:{row['connection']}",
+                "portal_logs_revision": epoch(s, connection) if connection else 0,
                 "workspace_id": workspace,
                 "resource_id": public_resource,
                 "logs_path": f"/v1/workspaces/{workspace}/resources/{public_resource}/logs",

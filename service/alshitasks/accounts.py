@@ -136,6 +136,12 @@ def discover(store, transport=None):
                         (r[0],),
                     )
             store.set_setting("discovery", {"next": time.time() + 30, "state": "connected"})
+            from .log_permissions import discovered
+            for row in store.db.execute(
+                "SELECT * FROM connections WHERE origin=? AND account=? AND workspace!=''",
+                (c['origin'], c['account']),
+            ).fetchall():
+                discovered(store, row)
     except Problem as e:
         with store.tx():
             if store.setting("active_account") != account or store.setting("authorization_generation", 0) != generation:

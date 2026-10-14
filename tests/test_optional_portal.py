@@ -209,6 +209,7 @@ class OptionalPortal(unittest.TestCase):
     def test_portal_view_schedules_without_io_and_late_response_is_discarded(self):
         self.connect()
         with self.store.tx():
+            self.store.set_setting('workspace:' + self.connection['id'], {'id': self.connection['workspace'], 'scopes': ['logs:read']})
             self.store.db.execute('UPDATE items SET connection=?,remote_id=? WHERE id=?', (self.connection['id'], uid(), self.resource))
         path = '/v1/portal/logs?resource_id=' + self.resource
         with patch('alshitasks.portal.remote', side_effect=AssertionError('Cache reads must not wait')):

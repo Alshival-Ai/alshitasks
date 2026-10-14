@@ -14,6 +14,9 @@ type Event = {
 };
 type Setup = {
   connected: boolean;
+  portal_logs: "available" | "restricted" | "unknown";
+  portal_logs_context: string;
+  portal_logs_revision: number;
   workspace_id: string;
   resource_id: string;
   logs_path: string;
@@ -42,16 +45,43 @@ export function ResourceLogs({ item }: { item: Item }) {
     [name, setName] = useState("Log sender"),
     [token, setToken] = useState("");
   const generation = useRef(0);
+  const setupGeneration = useRef(0);
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const setupRef = useRef<Setup | undefined>(undefined);
+  function acceptSetup(value: Setup) {
+    const previous = setupRef.current;
+    if ((previous && previous.portal_logs_context !== value.portal_logs_context) ||
+        (sourceRef.current === "portal" && (value.portal_logs !== "available" ||
+          previous?.portal_logs_revision !== value.portal_logs_revision))) {
+      generation.current++;
+      setEvents([]);
+      setCursor(null);
+      setCache(undefined);
+      setError("");
+      setBusy(false);
+      setSource("local");
+    }
+    setupRef.current = value;
+    setSetup(value);
+  }
   const params = () =>
     new URLSearchParams({ resource_id: item.id, workspace_id: workspace });
   const refreshSetup = async () => {
-    setSetup(await window.tasks.request("/v1/logs/setup?" + params()));
-    setTargets(
-      (await window.tasks.request("/v1/forwarding?" + params())).targets,
-    );
+    const current = setupGeneration.current;
+    const [value, forwarding] = await Promise.all([
+      window.tasks.request("/v1/logs/setup?" + params()),
+      window.tasks.request("/v1/forwarding?" + params()),
+    ]);
+    if (current !== setupGeneration.current) return;
+    acceptSetup(value);
+    setTargets(forwarding.targets);
   };
   useEffect(() => {
+    setupGeneration.current++;
+    setupRef.current = undefined;
     setSetup(undefined);
+    setSource("local");
     setToken("");
     setCloudToken("");
     setDestination("");
@@ -63,21 +93,36 @@ export function ResourceLogs({ item }: { item: Item }) {
     ])
       .then(([value, forwarding]) => {
         if (active) {
-          setSetup(value);
+          acceptSetup(value);
           setTargets(forwarding.targets);
         }
       })
       .catch((e) => {
         if (active) setError(e.message);
       });
+    // This endpoint reads local discovery metadata; it never fetches portal logs.
+    let reading = false;
+    const timer = setInterval(async () => {
+      if (reading) return;
+      reading = true;
+      try {
+        const value = await window.tasks.request("/v1/logs/setup?" + params());
+        if (active) acceptSetup(value);
+      } catch {
+        if (active && setupRef.current) acceptSetup({...setupRef.current, portal_logs: "unknown"});
+      } finally { reading = false; }
+    }, 2000);
     return () => {
       active = false;
+      setupGeneration.current++;
+      clearInterval(timer);
     };
   }, [item.id, workspace]);
   useEffect(() => {
     generation.current++;
     setEvents([]);
     setCursor(null);
+    setCache(undefined);
     setError("");
     setBusy(false);
     return () => {
@@ -90,6 +135,7 @@ export function ResourceLogs({ item }: { item: Item }) {
     setError("");
     try {
       if (!setup) throw new Error("Log setup is still loading.");
+      if (source === "portal" && setupRef.current?.portal_logs !== "available") return;
       const q = source === "local" ? new URLSearchParams() : params();
       if (severity) q.set("severity", severity);
       if (text) q.set("q", text);
@@ -101,6 +147,10 @@ export function ResourceLogs({ item }: { item: Item }) {
         (source === "local" ? setup.logs_path + "?" : "/v1/portal/logs?") + q,
       );
       if (current !== generation.current) return;
+      if (source === "portal" && result.portal_logs !== "available") {
+        acceptSetup({...setup, portal_logs: result.portal_logs ?? "unknown"});
+        return;
+      }
       setEvents((old) =>
         more
           ? [...old, ...(result.items ?? result.events ?? [])]
@@ -115,11 +165,11 @@ export function ResourceLogs({ item }: { item: Item }) {
     }
   }
   useEffect(() => {
-    if (source !== "portal" || !setup) return;
+    if (source !== "portal" || setup?.portal_logs !== "available") return;
     void load();
     const timer = setInterval(() => void load(), 5000);
     return () => clearInterval(timer);
-  }, [source, setup, severity, text, since, until, trace, workspace, item.id]);
+  }, [source, setup?.portal_logs, setup?.portal_logs_context, setup?.portal_logs_revision, severity, text, since, until, trace, workspace, item.id]);
   async function run(fn: () => Promise<void>) {
     setError("");
     setBusy(true);
@@ -152,11 +202,13 @@ export function ResourceLogs({ item }: { item: Item }) {
       <h3>Logs</h3>
       <label>
         Source{" "}
-        <select value={source} onChange={(e) => setSource(e.target.value)}>
+        <select aria-label="Source" value={source} onChange={(e) => setSource(e.target.value)}>
           <option value="local">On this device</option>
-          {setup?.connected && <option value="portal">Portal</option>}
+          <option value="portal" disabled={setup?.portal_logs !== "available"}>Portal</option>
         </select>
       </label>
+      {setup?.connected && setup.portal_logs === "restricted" && <p>Cloud Logs isn’t available for this workspace.</p>}
+      {setup?.connected && setup.portal_logs === "unknown" && <p>Cloud Logs availability hasn’t been confirmed for this workspace.</p>}
       <p>
         {source === "local"
           ? "Stored on this computer. Logs are not included in project synchronization."
