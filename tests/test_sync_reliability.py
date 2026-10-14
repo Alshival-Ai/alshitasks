@@ -55,6 +55,12 @@ class Reliability(unittest.TestCase):
         record = dict(self.record, data=encoded)
         self.assertEqual(decode(self.s, self.c["id"], record)["data"]["body"], data["body"])
 
+    def test_visibility_only_sent_for_records_that_support_it(self):
+        for kind in ('task', 'board', 'deliverable', 'resource'):
+            self.assertNotIn('visibility', encode_data(self.s, self.c['id'], {'visibility': 'internal'}, kind))
+        for kind in ('note', 'comment'):
+            self.assertEqual(encode_data(self.s, self.c['id'], {'visibility': 'internal'}, kind)['visibility'], 'internal')
+
     def test_failed_file_does_not_block_task_upload(self):
         self.sync()
         local = self.s.item(local_id(self.c["id"], self.record["id"]))

@@ -96,8 +96,13 @@ def merge(base, local, shared):
     return {**shared, **{k: local.get(k) for k in changed_local}}
 
 
-def encode_data(store, connection, data):
+def encode_data(store, connection, data, kind=None):
     data = {k: v for k, v in data.items() if k not in ("position", "resource_id")}
+    # Visibility is a note/comment field in the portal. The local shared
+    # record defaults also carry it on tasks and boards; do not send that
+    # synthetic field as a request to change their visibility.
+    if kind in ('task', 'board', 'deliverable', 'resource'):
+        data.pop('visibility', None)
     connection_row = store.db.execute("SELECT capabilities FROM connections WHERE id=?", (connection,)).fetchone()
     supports_taxonomy = connection_row and "task-taxonomy-v1" in json.loads(connection_row[0]).get("features", [])
     if not supports_taxonomy:
@@ -884,8 +889,8 @@ def sync_connection(store, c, transport=remote, token=None):
             shared = remote_by_id.get(remote_id)
             try:
                 if base is not None:
-                    base["data"] = encode_data(store, c["id"], base["data"])
-                local_data = encode_data(store, c["id"], local["data"])
+                    base["data"] = encode_data(store, c["id"], base["data"], local['kind'])
+                local_data = encode_data(store, c["id"], local["data"], local['kind'])
             except Problem:
                 with store.tx():
                     check_authorization()
