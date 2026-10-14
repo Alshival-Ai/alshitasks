@@ -608,7 +608,7 @@ s.db.close()
     await page.getByText("Workspace A task", { exact: true }).count(),
     0,
   );
-  await page.getByRole('button',{name:'Account',exact:true}).click();
+  await page.getByRole('button',{name:'Settings',exact:true}).click();
   await page.getByRole('button',{name:'Startup preferences'}).click();
   await page.locator('.wd-startup select').selectOption('last');
   await page.reload();
