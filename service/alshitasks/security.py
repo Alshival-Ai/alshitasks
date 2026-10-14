@@ -40,6 +40,9 @@ class Secrets:
         return p.stdout.rstrip("\n")
 
     def put(self, ident, value):
+        if os.environ.get('ALSHITASKS_SERVER_ROOT'):
+            from .server_secrets import vault
+            return vault().put(ident, value)
         if os.name == "nt":
             import win32crypt
             path = self.windows_path(ident)
@@ -56,6 +59,9 @@ class Secrets:
         self.run(["store", "--label=Alshival.Ai", "application", "alshitasks", "id", ident], value)
 
     def get(self, ident):
+        if os.environ.get('ALSHITASKS_SERVER_ROOT'):
+            from .server_secrets import vault
+            return vault().get(ident)
         if os.name == "nt":
             import win32crypt
             try:
@@ -65,6 +71,9 @@ class Secrets:
         return self.run(["lookup", "application", "alshitasks", "id", ident])
 
     def delete(self, ident):
+        if os.environ.get('ALSHITASKS_SERVER_ROOT'):
+            from .server_secrets import vault
+            return vault().delete(ident)
         if os.name == "nt":
             self.windows_path(ident).unlink(missing_ok=True)
             return
@@ -100,6 +109,10 @@ def authorize(store, token, scope, resource=None):
     row = store.db.execute("SELECT * FROM grants WHERE digest=? AND revoked_at IS NULL", (digest,)).fetchone()
     if not row or not hmac.compare_digest(row["digest"], digest):
         raise Problem("Authentication required", 401)
+    import time
+    expiry = store.setting('grant_expiry:' + row['id'])
+    if expiry is not None and expiry <= time.time():
+        raise Problem('Access token expired', 401)
     if scope not in json.loads(row["scopes"]):
         raise Problem("Grant does not permit this operation", 403)
     if row["resource_id"] and row["resource_id"] != resource:

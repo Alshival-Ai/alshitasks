@@ -76,3 +76,8 @@ Every push to `main` builds and tests Windows and Debian packages before publish
 ### Default local-owner MCP access
 
 `alshitasks mcp` can manage the current user's tasks, notes, resources, boards, taxonomy and relationships through the private Unix socket. It uses the service's peer-UID ownership check and needs no keyring or additional token. It exposes the existing MCP catalog only, not arbitrary HTTP routes or command execution. No HTTP port is opened. Portal workspace permissions, revision checks and sync conflicts still apply. `--read-only` explicitly restricts the connection; `--grant ID` uses that credential's scopes instead of owner access. These options are mutually exclusive. Run the per-user service before launching MCP.
+# Browser/server distribution
+
+Run the shared workspace UI and MCP on a headless machine with an independent
+owner login and optional portal sync. See [Alshitask Server setup](docs/server.md)
+for Windows development, Docker, private SSH access, HTTPS, and backups.

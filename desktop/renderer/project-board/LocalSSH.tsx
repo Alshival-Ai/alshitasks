@@ -91,7 +91,7 @@ export function LocalSSH({ item }: { item: Item }) {
       {saved && (
         <>
           <code>ssh {saved.alias}</code>
-          <button
+          <button className="desktop-only"
             disabled={busy}
             onClick={() =>
               void run(() =>

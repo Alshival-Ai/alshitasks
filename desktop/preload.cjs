@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld(
   "tasks",
   Object.freeze({
+    platform: "desktop",
     request: (path, method = "GET", body) =>
       ipcRenderer.invoke("tasks:request", path, method, body),
     getStartup: () => ipcRenderer.invoke("tasks:startup-get"),

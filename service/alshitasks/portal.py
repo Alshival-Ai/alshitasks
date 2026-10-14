@@ -250,7 +250,7 @@ class Portal:
             return value["access_token"]
         raise Problem("Portal session renewal is pending; retrying automatically", 503)
 
-    def connect(self, origin):
+    def connect(self, origin, web_redirect=None):
         from . import managed
         from .accounts import ORIGIN
         ident = uid()
@@ -359,7 +359,8 @@ class Portal:
                     finished.set()
 
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Callback)
-        redirect = f"http://127.0.0.1:{server.server_port}/callback"
+        local_callback = f"http://127.0.0.1:{server.server_port}/callback"
+        redirect = web_redirect or local_callback
         deadline = time.time() + 300
         completed = [False]
         finish_lock = threading.Lock()
@@ -370,7 +371,7 @@ class Portal:
                 "/oauth/register/",
                 body={
                     "client_name": "Alshival.Ai",
-                    "application_type": "native",
+                    "application_type": "web" if redirect.startswith('https://') else "native",
                     "redirect_uris": [redirect],
                     "token_endpoint_auth_method": "none",
                     "grant_types": ["authorization_code", "refresh_token"],
@@ -405,6 +406,7 @@ class Portal:
         threading.Thread(target=expire, daemon=True).start()
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
         return {
+            **({'local_callback': local_callback} if web_redirect else {}),
             "connection": ident,
             "url": origin
             + "/oauth/authorize/?"

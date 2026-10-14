@@ -1,0 +1,9 @@
+.server-login { position:fixed; inset:0; z-index:100000; display:grid; place-items:center; background:#f6f4ef; color:#202020; font:16px system-ui; }
+.server-login form { width:min(360px,85vw); display:grid; gap:16px; padding:32px; background:white; border:1px solid #ddd; border-radius:16px; }
+.server-login h1,.server-login p { margin:0; }
+.server-login label { display:grid; gap:8px; }
+.server-login input,.server-login button { padding:12px; border:1px solid #aaa; border-radius:8px; font:inherit; }
+.server-login button { background:#27232f; color:white; cursor:pointer; }
+.server-login [role=alert] { color:#a51c30; }
+.browser-mode .desktop-only { display:none !important; }
+.browser-mode .window-chrome { -webkit-app-region:no-drag; }

@@ -171,7 +171,7 @@ def supervise(api, stop, worker):
         stop.wait(1)
 
 
-def run(root=None):
+def run(root=None, web=None):
     os.umask(0o077)
     paths = Paths(root)
     lock = (paths.runtime / "service.lock").open("a")
@@ -184,6 +184,12 @@ def run(root=None):
     store = Store(paths)
     logs = Logs(paths)
     api = API(store, logs)
+    if web:
+        # Loopback OAuth callbacks cannot survive a process restart.
+        with store.tx():
+            for row in store.db.execute("SELECT id FROM connections WHERE state='authorizing'").fetchall():
+                store.set_setting('credential_cleanup:' + row['id'], True)
+            store.db.execute("UPDATE connections SET state='authorization-expired' WHERE state='authorizing'")
     stop = threading.Event()
     unix = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler) if WINDOWS else UnixServer(str(paths.socket), Handler)
     unix.api = api
@@ -210,9 +216,15 @@ def run(root=None):
 
     for worker in (background, forwarding_loop, retention_loop, graph_loop, file_loop, notification_loop, inbox_worker, icon_loop, resource_cache_loop, credential_cleanup_loop):
         threading.Thread(target=supervise, args=(api, stop, worker), daemon=True, name=worker.__name__).start()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, lambda *_: stop.set())
-    stop.wait()
+    if web:
+        try:
+            web(api, stop)
+        finally:
+            stop.set()
+    else:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, lambda *_: stop.set())
+        stop.wait()
     for server in servers:
         server.shutdown()
         server.server_close()

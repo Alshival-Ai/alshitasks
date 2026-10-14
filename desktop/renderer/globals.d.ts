@@ -2,6 +2,7 @@ export {};
 declare global {
   interface Window {
     tasks: {
+      platform?: "desktop" | "browser";
       request: (path: string, method?: string, body?: unknown) => Promise<any>;
       getStartup: () => Promise<{ enabled: boolean }>;
       setStartup: (enabled: boolean) => Promise<{ enabled: boolean }>;
