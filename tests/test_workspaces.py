@@ -41,7 +41,7 @@ class Workspaces(unittest.TestCase):
             discover(
                 self.s,
                 lambda origin, path, token: (
-                    {"resource": origin + "/desktop/v1", "account_id": "7", "features": ["graph-sync-v2"]}
+                    {"resource": origin + "/desktop/v1", "account_id": "7", "features": ["graph-sync-v2"], "navigation": [{'label':'Administration','url':'/staff/'}]}
                     if path.endswith("/capabilities")
                     else {"workspaces": self.remote}
                 ),
@@ -107,11 +107,26 @@ class Workspaces(unittest.TestCase):
         self.discover()
         for row in self.s.db.execute("SELECT capabilities FROM connections"):
             self.assertIn("graph-sync-v2", json.loads(row[0])["features"])
+            self.assertNotIn('navigation', json.loads(row[0]))
+        self.assertEqual(self.s.setting('account_navigation'), [])
 
     def test_account_navigation_replaced_on_activation(self):
         self.s.set_setting('account_navigation', [{'label':'Old admin','url':'/staff/users/'}])
-        activate(self.s, self.account, {'account_id':'7'})
+        activate(self.s, self.account, {'account_id':'7', 'navigation':[{'label':'Administration','url':'/staff/'}]})
         self.assertEqual(self.s.setting('account_navigation'), [])
+
+    def test_cached_admin_navigation_removed_on_upgrade(self):
+        import json
+        from alshitasks.accounts import dispatch
+        with self.s.tx():
+            self.s.set_setting('account_navigation', [{'label':'Administration','url':'/staff/'}])
+            self.s.db.execute('UPDATE connections SET capabilities=?', (json.dumps({'features':['graph-sync-v2'],'navigation':[{'url':'/staff/'}]}),))
+        self.assertEqual(dispatch(self.s, '/v1/portal/account', 'GET', {})['navigation'], [])
+        self.s.db.close()
+        self.s = Store(Paths(self.temp.name))
+        self.assertEqual(self.s.setting('account_navigation'), [])
+        for row in self.s.db.execute('SELECT capabilities FROM connections'):
+            self.assertEqual(json.loads(row[0]), {'features':['graph-sync-v2']})
 
     def test_catalog_keeps_summary_metadata_and_local_identity(self):
         self.remote[0].update(kind='internal', settings_url='/workspace/settings/', unread=3, neural_labs_url='/workspace/labs/')

@@ -57,7 +57,8 @@
     },
     "workspace-directory.css": {
       "source": "Alshival.ai website: customer_hub/static/customer_hub/workspace-directory.css",
-      "sha256": "a3af89e877e6c871c79f313ced76415a4dbe5db76c167a19197926aa446a02a0"
+      "sha256": "bdfdf132e929ce6ce1a2aa82648afc934bd66b80a056bd7b7fd095bfae41aa37",
+      "revision": "49dceffef4d80a4fce3a19fe348ce0503af376c9"
     },
     "portal-actions.css": {
       "source": "Alshival.ai website: customer_hub/static/customer_hub/portal-actions.css",

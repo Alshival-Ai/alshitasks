@@ -99,7 +99,7 @@ await page.addInitScript(() => {
           },
           managed: true,
           status: { state: "connected" },
-          navigation: [],
+          navigation: [{label:'Manage users',url:'/staff/users/'}],
         };
       if (p === "/v1/notifications")
         return { items: [], next_page: null, unread_count: 0, portal: {} };
@@ -142,6 +142,9 @@ await page.addInitScript(() => {
 });
 try {
   await page.goto(process.env.UI_BASE_URL || "http://127.0.0.1:8383");
+  await page.getByRole('button', {name:'Account',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button', {name:'Administration',exact:true}).count(), 0);
+  assert.equal(await page.getByRole('button', {name:'Manage users',exact:true}).count(), 0);
   await page
     .getByRole("heading", { name: "Workspaces", exact: true })
     .waitFor();

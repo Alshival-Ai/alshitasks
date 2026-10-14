@@ -82,6 +82,13 @@ class Store:
                 taxonomy.seed(self, taxonomy.LOCAL)
                 from .workspace_icons import local_selection
                 self.set_setting('local_workspace_icon', local_selection(self))
+                if self.setting('account_navigation'):
+                    self.set_setting('account_navigation', [])
+                for row in self.db.execute('SELECT id,capabilities FROM connections WHERE capabilities LIKE ?', ('%"navigation"%',)).fetchall():
+                    capabilities = json.loads(row['capabilities'])
+                    if isinstance(capabilities, dict) and 'navigation' in capabilities:
+                        capabilities.pop('navigation')
+                        self.db.execute('UPDATE connections SET capabilities=? WHERE id=?', (json.dumps(capabilities), row['id']))
         except BaseException:
             self.db.close()
             raise

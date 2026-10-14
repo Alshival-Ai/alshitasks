@@ -552,22 +552,6 @@ function App() {
                 </button>
               ))}
           </HeaderMenu>
-          {accountInfo.account && !!accountInfo.navigation?.length && (
-            <HeaderMenu label="Administration">
-              {accountInfo.navigation.map((link: any) => (
-                <button
-                  key={link.url}
-                  onClick={() =>
-                    void window.tasks.external(
-                      new URL(link.url, accountInfo.account.origin).href,
-                    )
-                  }
-                >
-                  {link.label}
-                </button>
-              ))}
-            </HeaderMenu>
-          )}
           <span className="local-label">
             {settings.paused
               ? "Background paused"

@@ -9,6 +9,8 @@ ORIGIN = "https://alshival.ai"
 
 
 def activate(store, ident, capabilities):
+    capabilities = dict(capabilities)
+    capabilities.pop('navigation', None)
     c = dict(store.db.execute("SELECT * FROM connections WHERE id=?", (ident,)).fetchone())
     account = {
         "id": str(capabilities["account_id"]),
@@ -20,6 +22,7 @@ def activate(store, ident, capabilities):
     current = store.setting("active_account")
     if current and (current["id"], current["origin"]) != (account["id"], account["origin"]):
         raise Problem("Sign out before switching accounts", 409)
+    store.db.execute('UPDATE connections SET capabilities=? WHERE id=?', (json.dumps(capabilities), ident))
     for row in store.db.execute("SELECT * FROM connections WHERE workspace!=''").fetchall():
         if (row["origin"], row["account"]) == (account["origin"], account["id"]):
             store.set_setting("credential:" + row["id"], ident)
@@ -28,7 +31,7 @@ def activate(store, ident, capabilities):
         elif row["state"] == "connected":
             store.db.execute("UPDATE connections SET state='disconnected' WHERE id=?", (row["id"],))
     store.set_setting("active_account", account)
-    store.set_setting("account_navigation", capabilities.get("navigation", []))
+    store.set_setting("account_navigation", [])
     store.set_setting("last_account", account)
     store.set_setting("discovery", {"next": 0})
     store.set_setting("publish_offer", True)
@@ -84,6 +87,8 @@ def discover(store, transport=None):
             or str(capabilities.get("account_id")) != c["account"]
         ):
             raise Problem("Account capability identity changed; sign in again", 401)
+        capabilities = dict(capabilities)
+        capabilities.pop('navigation', None)
         encoded = json.dumps(capabilities)
         rows = transport(c["origin"], "/desktop/v1/workspaces", token)["workspaces"]
         if not isinstance(rows, list) or any(not all(k in w for k in ("id", "name", "scopes")) for w in rows):
@@ -95,7 +100,7 @@ def discover(store, transport=None):
                 "UPDATE connections SET capabilities=? WHERE origin=? AND account=?",
                 (encoded, c["origin"], c["account"]),
             )
-            store.set_setting("account_navigation", capabilities.get("navigation", []))
+            store.set_setting("account_navigation", [])
             seen = set()
             for w in rows:
                 if "project:read" not in w["scopes"]:
@@ -148,7 +153,7 @@ def dispatch(store, path, method, body):
     if path == "/v1/portal/account" and method == "GET":
         return {
             "managed": enabled(store),
-            "navigation": store.setting("account_navigation", []) if store.setting("active_account") else [],
+            "navigation": [],  # Compatibility with older desktop clients; administration is portal-only.
             "account": store.setting("active_account"),
             "status": store.setting("discovery", {}),
             "offer_publish": store.setting("publish_offer", False),
