@@ -80,6 +80,8 @@ class Store:
 
                 migrate(self)
                 taxonomy.seed(self, taxonomy.LOCAL)
+                from .workspace_icons import local_selection
+                self.set_setting('local_workspace_icon', local_selection(self))
         except BaseException:
             self.db.close()
             raise

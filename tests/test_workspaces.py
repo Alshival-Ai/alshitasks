@@ -56,7 +56,8 @@ class Workspaces(unittest.TestCase):
         def call(path, method='GET', body=None):
             with self.s.tx():
                 return self.api.dispatch(path,method,body,True)
-        self.assertEqual(call(local)['icon'], '')
+        from alshitasks.workspace_art import defaults
+        self.assertEqual(call(local)['icon'], defaults(LOCAL)['icon'])
         self.assertEqual(call(local,'POST',{'icon':'rocket','revision':0})['revision'], 1)
         self.assertEqual(call('/v1/workspaces')['workspaces'][0]['icon'], 'rocket')
         with self.assertRaises(Problem):call(local,'POST',{'icon':'leaf','revision':0})
@@ -70,6 +71,33 @@ class Workspaces(unittest.TestCase):
         with self.s.tx():self.s.db.execute("UPDATE connections SET state='revoked' WHERE id=?", (self.ids[0],))
         self.assertFalse(call(path)['can_manage'])
         with self.assertRaises(Problem):call(path,'POST',{'icon':'home','revision':2})
+
+    def test_icon_color_persistence_reset_and_legacy_update(self):
+        from alshitasks.workspace_art import defaults, ICON_IDS, COLORS
+        local = '/v1/workspaces/icon?workspace_id=' + LOCAL
+        def call(body=None):
+            with self.s.tx():
+                return self.api.dispatch(local, 'POST' if body is not None else 'GET', body, True)
+        initial = call()
+        self.assertEqual(call(), initial)
+        from alshitasks.workspaces import catalog
+        catalog(self.s)
+        self.assertFalse(self.s.db.in_transaction, 'Reading workspace artwork must not open a write transaction')
+        custom = call({'icon':'heart', 'icon_color':'#Ab12Cd', 'revision':0})
+        self.assertEqual(custom['icon_color'], '#ab12cd')
+        legacy = call({'icon':'star', 'revision':1})
+        self.assertEqual(legacy['icon_color'], '#ab12cd')
+        for bad in ['red', '#fff', '#123456;display:none', None]:
+            with self.assertRaises(Problem):
+                call({'icon':'star','icon_color':bad,'revision':2})
+        with self.assertRaises(Problem):
+            call({'icon':'star','icon_color':'#112233','revision':1})
+        reset = call({'icon':'','revision':2})
+        self.assertEqual({k:reset[k] for k in ('icon','icon_color')}, defaults(LOCAL))
+        self.assertEqual(self.s.setting('local_workspace_icon')['icon_color'], reset['icon_color'])
+        assigned = [defaults(str(i)) for i in range(50)]
+        self.assertGreater(len({r['icon'] for r in assigned}), 15)
+        self.assertTrue(all(r['icon'] in ICON_IDS and r['icon_color'] in COLORS for r in assigned))
 
     def test_discovery_refreshes_existing_connection_capabilities(self):
         import json

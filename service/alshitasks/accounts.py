@@ -113,7 +113,8 @@ def discover(store, transport=None):
                 else:
                     store.db.execute("UPDATE connections SET state='connected' WHERE id=?", (ident,))
                 store.set_setting("credential:" + ident, account["connection"])
-                store.set_setting("workspace:" + ident, w)
+                from .workspace_art import appearance
+                store.set_setting("workspace:" + ident, dict(w, **appearance(w['id'], w.get('icon'), w.get('icon_color'))))
                 seen.add(ident)
             for r in store.db.execute(
                 "SELECT id FROM connections WHERE origin=? AND account=? AND workspace!=''",

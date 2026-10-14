@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import "./notifications.css";
 type Notice = {
   id: string;
@@ -18,6 +18,13 @@ export function Notifications({
 }: {
   openResource: (id: string, workspace: string) => void;
 }) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  const [position, setPosition] = useState({ top: 64, right: 16 });
+  const close = () => {
+    setOpen(false);
+    trigger.current?.focus();
+  };
   const [open, setOpen] = useState(false),
     [full, setFull] = useState(false),
     [items, setItems] = useState<Notice[]>([]),
@@ -30,6 +37,31 @@ export function Notifications({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [portal, setPortal] = useState<any>({});
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const box = trigger.current!.getBoundingClientRect();
+      const width = Math.min(full ? 800 : 440, window.innerWidth - 32);
+      setPosition({
+        top: Math.min(box.bottom + 8, Math.max(16, window.innerHeight - 160)),
+        right: Math.min(
+          Math.max(16, window.innerWidth - box.right),
+          Math.max(16, window.innerWidth - width - 16),
+        ),
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, full]);
+  useEffect(() => {
+    if (open)
+      panel.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [open]);
   async function load() {
     const q = new URLSearchParams({
       filter,
@@ -131,9 +163,13 @@ export function Notifications({
   return (
     <div className="desktop-notifications">
       <button
+        ref={trigger}
         type="button"
         aria-label={`Notifications, ${unread} unread`}
         aria-expanded={open}
+        aria-controls="desktop-notification-panel"
+        aria-haspopup="dialog"
+        title="Notifications"
         onClick={() => {
           setOpen(!open);
           if (!open)
@@ -157,26 +193,33 @@ export function Notifications({
         >
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" />
         </svg>{" "}
-        {unread > 0 && <span>{unread}</span>}
+        {unread > 0 && (
+          <span className="notification-badge" aria-hidden="true">
+            {unread > 99 ? "99+" : unread}
+          </span>
+        )}
       </button>
       {open && (
         <section
+          ref={panel}
+          id="desktop-notification-panel"
+          style={{
+            ...position,
+            maxHeight: `calc(100dvh - ${position.top + 16}px)`,
+          }}
           role="dialog"
           aria-label="Notifications"
           className={full ? "notification-panel is-full" : "notification-panel"}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               e.stopPropagation();
-              setOpen(false);
+              close();
             }
           }}
         >
           <header>
             <h2>Notifications</h2>
-            <button
-              aria-label="Close notifications"
-              onClick={() => setOpen(false)}
-            >
+            <button aria-label="Close notifications" onClick={close}>
               ×
             </button>
           </header>

@@ -7,6 +7,9 @@ LOCAL = "00000000-0000-4000-8000-000000000001"
 
 
 def catalog(store):
+    from .workspace_icons import local_selection
+    from .workspace_art import appearance
+    local_art = local_selection(store)
     account = store.setting("active_account") or store.setting("last_account")
     counts = {r['connection']: r for r in store.db.execute(
         "SELECT connection, SUM(state='queued') AS pending, SUM(state IN ('draft','conflict')) AS trouble FROM outbox GROUP BY connection")}
@@ -14,7 +17,8 @@ def catalog(store):
         {
             "id": LOCAL,
             "name": "Local workspace",
-            "icon": store.setting("local_workspace_icon", {}).get("icon", ""),
+            "icon": local_art['icon'],
+            "icon_color": local_art['icon_color'],
             "local": True,
             "state": "local",
             "scopes": ["project:read", "project:write"],
@@ -39,7 +43,7 @@ def catalog(store):
                 "id": r["workspace"],
                 "connection_id": r["id"],
                 "name": meta.get("name", r["workspace"]),
-                "icon": meta.get("icon", ""),
+                **appearance(r['workspace'], meta.get('icon'), meta.get('icon_color')),
                 "local": False,
                 "kind": meta.get("kind", "customer"),
                 "unread": meta.get("unread"),

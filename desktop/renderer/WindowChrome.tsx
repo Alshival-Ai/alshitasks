@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import "./theme-selector.css";
-export function WindowChrome() {
+export function WindowChrome({ notifications }: { notifications: ReactNode }) {
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     document.dispatchEvent(new Event("alshival:page"));
@@ -10,6 +10,7 @@ export function WindowChrome() {
   }, []);
   return (
     <div className="window-chrome app-header-actions">
+      {notifications}
       <div
         aria-label="Color theme"
         className="theme-control"

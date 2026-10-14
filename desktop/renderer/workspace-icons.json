@@ -46,5 +46,53 @@
   {
     "id": "network",
     "name": "Network"
+  },
+  {
+    "id": "book",
+    "name": "Book"
+  },
+  {
+    "id": "calendar",
+    "name": "Calendar"
+  },
+  {
+    "id": "camera",
+    "name": "Camera"
+  },
+  {
+    "id": "chart",
+    "name": "Chart"
+  },
+  {
+    "id": "cloud",
+    "name": "Cloud"
+  },
+  {
+    "id": "flag",
+    "name": "Flag"
+  },
+  {
+    "id": "heart",
+    "name": "Heart"
+  },
+  {
+    "id": "music",
+    "name": "Music"
+  },
+  {
+    "id": "palette",
+    "name": "Palette"
+  },
+  {
+    "id": "puzzle",
+    "name": "Puzzle"
+  },
+  {
+    "id": "shield",
+    "name": "Shield"
+  },
+  {
+    "id": "star",
+    "name": "Star"
   }
 ]

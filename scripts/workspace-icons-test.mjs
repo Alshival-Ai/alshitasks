@@ -7,22 +7,65 @@ const root = await mkdtemp(path.join(os.tmpdir(), "alshitasks-icon-ui-"));
 let app;
 try {
   app = await electron.launch({
-    executablePath: "/usr/lib/alshitasks/electron/electron",
+    executablePath:
+      process.platform === "win32"
+        ? process.env.ALSHITASKS_TEST_EXE
+        : "/usr/lib/alshitasks/electron/electron",
     chromiumSandbox: true,
     args: [
-      "--ozone-platform=x11",
+      ...(process.platform === "win32" ? [] : ["--ozone-platform=x11"]),
       process.env.ALSHITASKS_TEST_APP || path.resolve("."),
     ],
     env: { ...process.env, ALSHITASKS_TEST_ROOT: root },
   });
   const page = await app.firstWindow();
   await page.getByRole("button", { name: /New task/ }).waitFor();
+  const menu = page.locator(".wd-header-menu").first();
+  await menu.getByRole("button", { name: "Settings", exact: true }).click();
+  assert.equal(
+    await menu
+      .getByRole("button", { name: "Account settings", exact: true })
+      .count(),
+    0,
+  );
+  assert.ok(
+    await menu
+      .getByRole("button", { name: "Sign in with Alshival.Ai", exact: true })
+      .isVisible(),
+  );
+  await menu.getByRole("button", { name: "Settings", exact: true }).click();
+  const bell = page.getByRole("button", { name: /Notifications, \d+ unread/ });
+  const bellBox = await bell.boundingBox(),
+    themeBox = await page
+      .locator(".window-chrome .theme-control")
+      .boundingBox();
+  assert.ok(
+    bellBox.x + bellBox.width <= themeBox.x &&
+      Math.abs(bellBox.y - themeBox.y) < 15,
+  );
+  assert.equal(
+    await bell.evaluate((el) => getComputedStyle(el).borderTopWidth),
+    "0px",
+  );
+  await bell.click();
+  await page
+    .getByRole("dialog", { name: "Notifications", exact: true })
+    .waitFor();
+  await page.keyboard.press("Escape");
+  assert.ok(await bell.evaluate((el) => el === document.activeElement));
   await page
     .getByRole("button", { name: "Settings for Local workspace", exact: true })
     .first()
     .click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("radio", { name: "Rocket", exact: true }).check();
+  assert.equal(
+    await dialog.locator(".workspace-icon-picker input[type=radio]").count(),
+    24,
+  );
+  await dialog
+    .getByRole("button", { name: "Use color #db2777", exact: true })
+    .click();
   await dialog
     .getByRole("button", { name: "Save workspace icon", exact: true })
     .click();
@@ -36,15 +79,25 @@ try {
     .click();
   const glyph = page.locator(".wd-nav-list .workspace-icon").first();
   assert.ok(await glyph.isVisible());
+  assert.equal(
+    await glyph.evaluate(
+      (e) => getComputedStyle(e.parentElement).backgroundColor,
+    ),
+    "rgba(0, 0, 0, 0)",
+  );
   const colors = [];
   for (const theme of ["Light", "Dark"]) {
     await page.getByRole("radio", { name: theme, exact: true }).click();
     colors.push(await glyph.evaluate((e) => getComputedStyle(e).color));
     await page.screenshot({
-      path: "/tmp/workspace-icon-" + theme.toLowerCase() + ".png",
+      path: path.join(
+        os.tmpdir(),
+        "workspace-icon-" + theme.toLowerCase() + ".png",
+      ),
     });
   }
-  assert.notEqual(colors[0], colors[1]);
+  assert.equal(colors[0], "rgb(219, 39, 119)");
+  assert.equal(colors[0], colors[1]);
   await page.reload();
   await page
     .locator('.wd-nav-list .workspace-icon use[href$="#rocket"]')
@@ -60,7 +113,29 @@ try {
       .getByRole("radio", { name: "Rocket", exact: true })
       .isChecked(),
   );
-  await page.screenshot({ path: "/tmp/workspace-icon-picker.png" });
+  assert.equal(
+    await dialog.locator("input[type=color]").inputValue(),
+    "#db2777",
+  );
+  await page.screenshot({
+    path: path.join(os.tmpdir(), "workspace-icon-picker.png"),
+  });
+  await dialog.locator('input[type=color]').fill('#123abc');
+  await dialog.getByRole('button', {name:'Save workspace icon',exact:true}).click();
+  await dialog.getByText('Workspace icon saved.', {exact:true}).waitFor();
+  await dialog.getByRole('button', {name:'Reset to default',exact:true}).click();
+  assert.notEqual(await dialog.locator('input[type=color]').inputValue(), '#123abc');
+  await dialog.getByRole('button', {name:'Save workspace icon',exact:true}).click();
+  await dialog.getByText('Workspace icon saved.', {exact:true}).waitFor();
+  await dialog.getByRole('button', {name:'Close',exact:true}).click();
+  await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].setSize(900,650));
+  await bell.click();
+  const notificationBox = await page.getByRole('dialog', {name:'Notifications',exact:true}).boundingBox();
+  const viewport = await page.evaluate(() => ({width:innerWidth,height:innerHeight}));
+  assert.ok(notificationBox.x >= 0 && notificationBox.x + notificationBox.width <= viewport.width);
+  assert.ok(notificationBox.y >= 0 && notificationBox.y + notificationBox.height <= viewport.height);
+  await page.getByRole('button', {name:'Close notifications',exact:true}).click();
+  assert.ok(await bell.evaluate(el=>el===document.activeElement));
   console.log(
     "PASS: workspace icon picker, save, restart persistence, collapsed navigation and light/dark rendering.",
   );
@@ -73,6 +148,18 @@ try {
     );
   throw e;
 } finally {
-  if (app) await app.close();
-  await rm(root, { recursive: true, force: true });
+  if (app) {
+    await (
+      await app.firstWindow()
+    )
+      .evaluate(() => window.tasks.service("stop"))
+      .catch(() => {});
+    await app.close();
+  }
+  await rm(root, {
+    recursive: true,
+    force: true,
+    maxRetries: 20,
+    retryDelay: 250,
+  });
 }

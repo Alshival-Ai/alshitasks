@@ -17,17 +17,33 @@ import "./project-board/portal/workspace-directory.css";
 import { readDeviceState, writeDeviceState } from "./deviceState";
 import { LOCAL_WORKSPACE, selectWorkspace } from "./project-board/api";
 const api = window.tasks.request;
-const sidebarIcons = new URL("./sidebar-icons.svg?no-inline", import.meta.url).href;
+const sidebarIcons = new URL("./sidebar-icons.svg?no-inline", import.meta.url)
+  .href;
 import "./portal-controls.css";
 import "./project-board/portal/portal-actions.css";
 import "./sidebar.css";
 import "./sidebar.js";
 function NavIcon({ name }: { name: string }) {
-  return <svg className="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><use href={`${sidebarIcons}#${name}`} /></svg>;
+  return (
+    <svg
+      className="nav-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <use href={`${sidebarIcons}#${name}`} />
+    </svg>
+  );
 }
 function App() {
   const [expanded, setExpanded] = useState(
-    () => window.innerWidth > 900 && readDeviceState("alshitasks", "sidebar") !== false,
+    () =>
+      window.innerWidth > 900 &&
+      readDeviceState("alshitasks", "sidebar") !== false,
   );
   useEffect(() => {
     document.body.classList.add(
@@ -45,17 +61,26 @@ function App() {
   const sidebarRef = useRef<HTMLElement>(null);
   const sidebarAccount = accountInfo.account?.id || "local";
   const toggleSidebar = () => {
-    const next = !expanded; setExpanded(next);
+    const next = !expanded;
+    setExpanded(next);
     if (!narrow) writeDeviceState(sidebarAccount, "sidebar", next);
   };
   useEffect(() => {
-    const saved = readDeviceState(sidebarAccount, "sidebar") ?? readDeviceState("alshitasks", "sidebar");
+    const saved =
+      readDeviceState(sidebarAccount, "sidebar") ??
+      readDeviceState("alshitasks", "sidebar");
     setExpanded(window.innerWidth > 900 && saved !== false);
   }, [sidebarAccount]);
   useEffect(() => {
     const media = matchMedia("(max-width:900px)");
-    const change = () => { setNarrow(media.matches); setExpanded(!media.matches && readDeviceState(sidebarAccount,"sidebar") !== false); };
-    media.addEventListener("change",change); return () => media.removeEventListener("change",change);
+    const change = () => {
+      setNarrow(media.matches);
+      setExpanded(
+        !media.matches && readDeviceState(sidebarAccount, "sidebar") !== false,
+      );
+    };
+    media.addEventListener("change", change);
+    return () => media.removeEventListener("change", change);
   }, [sidebarAccount]);
   useEffect(() => {
     if (!narrow || !expanded) return;
@@ -63,14 +88,32 @@ function App() {
     const sidebar = sidebarRef.current!;
     sidebar.querySelector<HTMLButtonElement>("button")?.focus();
     const key = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { event.preventDefault(); setExpanded(false); }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setExpanded(false);
+      }
       if (event.key !== "Tab") return;
-      const controls = [...sidebar.querySelectorAll<HTMLElement>("a[href],button,input,summary")].filter(e => e.offsetParent !== null && !e.hasAttribute("disabled"));
-      if (event.shiftKey && document.activeElement === controls[0]) { event.preventDefault(); controls.at(-1)?.focus(); }
-      else if (!event.shiftKey && document.activeElement === controls.at(-1)) { event.preventDefault(); controls[0]?.focus(); }
+      const controls = [
+        ...sidebar.querySelectorAll<HTMLElement>(
+          "a[href],button,input,summary",
+        ),
+      ].filter((e) => e.offsetParent !== null && !e.hasAttribute("disabled"));
+      if (event.shiftKey && document.activeElement === controls[0]) {
+        event.preventDefault();
+        controls.at(-1)?.focus();
+      } else if (
+        !event.shiftKey &&
+        document.activeElement === controls.at(-1)
+      ) {
+        event.preventDefault();
+        controls[0]?.focus();
+      }
     };
     document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("keydown",key); previous?.focus(); };
+    return () => {
+      document.removeEventListener("keydown", key);
+      previous?.focus();
+    };
   }, [narrow, expanded]);
 
   const [localBoards, setLocalBoards] = useState<Item[]>([]);
@@ -243,7 +286,9 @@ function App() {
     setStartupValue(pref);
     const saved = readDeviceState(account, "workspace");
     const target =
-      availableWorkspaces.find((w) => w.id === saved || w.connection_id === saved) || availableWorkspaces[0];
+      availableWorkspaces.find(
+        (w) => w.id === saved || w.connection_id === saved,
+      ) || availableWorkspaces[0];
     if (target) {
       selectWorkspace(target.id);
       setWorkspace(target.id);
@@ -309,21 +354,59 @@ function App() {
     e.preventDefault();
     return Object.fromEntries(new FormData(e.currentTarget));
   };
-  const selectedWorkspace = workspaces.find(w => w.id === workspace);
-  const boards = boardNavigation.filter(b => !b.data.archived);
-  const multipleBoards = boards.length + (workspace === LOCAL_WORKSPACE ? 1 : 0) > 1;
-  const boardLinks = <>
-    {workspace === LOCAL_WORKSPACE && <button aria-label="Workspace board" aria-current={!activeBoard ? "page" : undefined} onClick={() => selectBoard(workspace, "")}><NavIcon name="board"/><span className="nav-label">Workspace board</span></button>}
-    {boards.map(b => <button key={b.id} title={b.data.title} aria-label={b.data.title} aria-current={activeBoard === b.id ? "page" : undefined} onClick={() => selectBoard(workspace,b.id)}><NavIcon name="board"/><span className="nav-label">{b.data.title}</span></button>)}
-  </>;
+  const selectedWorkspace = workspaces.find((w) => w.id === workspace);
+  const boards = boardNavigation.filter((b) => !b.data.archived);
+  const multipleBoards =
+    boards.length + (workspace === LOCAL_WORKSPACE ? 1 : 0) > 1;
+  const boardLinks = (
+    <>
+      {workspace === LOCAL_WORKSPACE && (
+        <button
+          aria-label="Workspace board"
+          aria-current={!activeBoard ? "page" : undefined}
+          onClick={() => selectBoard(workspace, "")}
+        >
+          <NavIcon name="board" />
+          <span className="nav-label">Workspace board</span>
+        </button>
+      )}
+      {boards.map((b) => (
+        <button
+          key={b.id}
+          title={b.data.title}
+          aria-label={b.data.title}
+          aria-current={activeBoard === b.id ? "page" : undefined}
+          onClick={() => selectBoard(workspace, b.id)}
+        >
+          <NavIcon name="board" />
+          <span className="nav-label">{b.data.title}</span>
+        </button>
+      ))}
+    </>
+  );
   const openLabs = () => {
-    if (!selectedWorkspace?.neural_labs_url || !selectedWorkspace.portal_origin || selectedWorkspace.state !== "connected") return;
-    const origin = new URL(selectedWorkspace.portal_origin), target = new URL(selectedWorkspace.neural_labs_url,origin);
-    if (target.origin === origin.origin && target.protocol === "https:") void window.tasks.external(target.href);
+    if (
+      !selectedWorkspace?.neural_labs_url ||
+      !selectedWorkspace.portal_origin ||
+      selectedWorkspace.state !== "connected"
+    )
+      return;
+    const origin = new URL(selectedWorkspace.portal_origin),
+      target = new URL(selectedWorkspace.neural_labs_url, origin);
+    if (target.origin === origin.origin && target.protocol === "https:")
+      void window.tasks.external(target.href);
   };
   return (
     <>
-      <aside ref={sidebarRef} id="app-sidebar" className="app-sidebar" aria-label="Alshival navigation" inert={narrow && !expanded} role={narrow && expanded ? "dialog" : undefined} aria-modal={narrow && expanded ? true : undefined}>
+      <aside
+        ref={sidebarRef}
+        id="app-sidebar"
+        className="app-sidebar"
+        aria-label="Alshival navigation"
+        inert={narrow && !expanded}
+        role={narrow && expanded ? "dialog" : undefined}
+        aria-modal={narrow && expanded ? true : undefined}
+      >
         <div className="app-sidebar-controls">
           <button
             type="button"
@@ -354,11 +437,52 @@ function App() {
               current={tab === "Projects" ? workspace : ""}
               select={changeWorkspace}
             >
-              {tab === "Projects" && multipleBoards && <><nav className="wd-board-children" aria-label="Current workspace boards">{boardLinks}</nav><button className="wd-board-picker" data-sidebar-boards="sidebar-boards" aria-label="Choose board" title="Choose board"><NavIcon name="board"/></button></>}
+              {tab === "Projects" && multipleBoards && (
+                <>
+                  <nav
+                    className="wd-board-children"
+                    aria-label="Current workspace boards"
+                  >
+                    {boardLinks}
+                  </nav>
+                  <button
+                    className="wd-board-picker"
+                    data-sidebar-boards="sidebar-boards"
+                    aria-label="Choose board"
+                    title="Choose board"
+                  >
+                    <NavIcon name="board" />
+                  </button>
+                </>
+              )}
             </WorkspaceList>
           </div>
-          {tab === "Projects" && multipleBoards && <div id="sidebar-boards" className="wd-board-popover" popover="auto" aria-label="Choose board"><p>Choose board</p>{boardLinks}</div>}
-          {tab === "Projects" && selectedWorkspace?.state === "connected" && selectedWorkspace?.neural_labs_url && <div className="wd-sidebar-footer"><button className="wd-directory-link" onClick={openLabs} aria-label="Neural Labs (opens in browser)" title="Neural Labs · opens in browser"><NavIcon name="labs"/><span className="nav-label">Neural Labs</span></button></div>}
+          {tab === "Projects" && multipleBoards && (
+            <div
+              id="sidebar-boards"
+              className="wd-board-popover"
+              popover="auto"
+              aria-label="Choose board"
+            >
+              <p>Choose board</p>
+              {boardLinks}
+            </div>
+          )}
+          {tab === "Projects" &&
+            selectedWorkspace?.state === "connected" &&
+            selectedWorkspace?.neural_labs_url && (
+              <div className="wd-sidebar-footer">
+                <button
+                  className="wd-directory-link"
+                  onClick={openLabs}
+                  aria-label="Neural Labs (opens in browser)"
+                  title="Neural Labs · opens in browser"
+                >
+                  <NavIcon name="labs" />
+                  <span className="nav-label">Neural Labs</span>
+                </button>
+              </div>
+            )}
         </div>
       </aside>
       {expanded && (
@@ -395,27 +519,40 @@ function App() {
             select={changeWorkspace}
             directory={() => showTab("Workspaces")}
           />
-          <HeaderMenu label="Account">
+          <HeaderMenu label={accountInfo.account ? "Account" : "Settings"}>
             <button onClick={() => showTab("Settings")}>Device settings</button>
-            <button
-              onClick={() =>
-                void window.tasks.external(
-                  new URL(
-                    "/account/settings/",
-                    accountInfo.account?.origin ||
-                      settings.portal_url ||
-                      "https://alshival.ai",
-                  ).href,
-                )
-              }
-            >
-              Account settings
-            </button>
+            {accountInfo.account && (
+              <button
+                onClick={() =>
+                  void window.tasks.external(
+                    new URL("/account/settings/", accountInfo.account.origin)
+                      .href,
+                  )
+                }
+              >
+                Account settings
+              </button>
+            )}
             <button onClick={() => showTab("Workspaces")}>
               Startup preferences
             </button>
+            {!accountInfo.account &&
+              (accountInfo.managed ? (
+                <button
+                  onClick={() => {
+                    showTab("Settings");
+                    void work(() => api("/v1/portal/retry", "POST", {}));
+                  }}
+                >
+                  Retry account connection
+                </button>
+              ) : (
+                <button onClick={() => void work(() => window.tasks.connect())}>
+                  Sign in with Alshival.Ai
+                </button>
+              ))}
           </HeaderMenu>
-          {!!accountInfo.navigation?.length && (
+          {accountInfo.account && !!accountInfo.navigation?.length && (
             <HeaderMenu label="Administration">
               {accountInfo.navigation.map((link: any) => (
                 <button
@@ -438,8 +575,11 @@ function App() {
                 ? "On this computer"
                 : syncLabel(workspaces.find((w) => w.id === workspace))}
           </span>
-          <Notifications openResource={openNotificationResource} />
-          <WindowChrome />
+          <WindowChrome
+            notifications={
+              <Notifications openResource={openNotificationResource} />
+            }
+          />
         </header>
         {error && (
           <p role="alert" className="notice error">
@@ -539,8 +679,8 @@ function App() {
                   Start at login minimized
                 </label>
                 <p>
-                  Start in the system tray without opening a window. Applies to your
-                  account on this computer.
+                  Start in the system tray without opening a window. Applies to
+                  your account on this computer.
                 </p>
               </section>
               <section>
@@ -864,13 +1004,7 @@ function App() {
                   The bundled MCP server works locally without an Alshival.Ai
                   account.
                 </p>
-                <pre>
-                  {JSON.stringify(
-                    settings.mcp_config,
-                    null,
-                    2,
-                  )}
-                </pre>
+                <pre>{JSON.stringify(settings.mcp_config, null, 2)}</pre>
                 <button
                   onClick={() =>
                     void work(async () => {
@@ -996,7 +1130,8 @@ function App() {
                 </button>
                 <p>
                   Backups include task data, attachments and logs. Secrets are
-                  held separately in your operating system's protected credential storage.
+                  held separately in your operating system's protected
+                  credential storage.
                 </p>
               </section>
               <section>
@@ -1232,10 +1367,11 @@ function ServiceStatus() {
             ? "Checking service…"
             : !status.running
               ? "Service stopped"
-              : status.platform === "win32" ? "Running in your Windows session · startup at login is controlled in Account"
-              : status.managed
-                ? "Running · starts at login and continues after closing this window"
-                : "Running without systemd · automatic restart and startup at login are unavailable")}
+              : status.platform === "win32"
+                ? "Running in your Windows session · startup at login is controlled in Account"
+                : status.managed
+                  ? "Running · starts at login and continues after closing this window"
+                  : "Running without systemd · automatic restart and startup at login are unavailable")}
       </p>
       <p>
         Sleep, logout, or powering off can interrupt collection. Senders should

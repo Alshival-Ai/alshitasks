@@ -3,11 +3,38 @@
   -webkit-app-region: no-drag;
 }
 .desktop-notifications > button {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 44px;
+  height: 44px;
   color: var(--app-ink);
-  background: var(--app-card);
-  border: 1px solid var(--app-line);
-  border-radius: 10px;
-  padding: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  cursor: pointer;
+}
+.desktop-notifications > button:hover {
+  background: color-mix(in srgb, var(--app-ink) 8%, transparent);
+}
+.desktop-notifications > button:focus-visible {
+  outline: 2px solid var(--app-ink);
+  outline-offset: 2px;
+}
+.notification-badge {
+  position: absolute;
+  top: 1px;
+  right: -3px;
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 12px;
+  font-size: 10px;
+  line-height: 14px;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  pointer-events: none;
 }
 .notification-panel {
   position: fixed;
@@ -26,7 +53,7 @@
   box-shadow: 0 16px 50px #0004;
 }
 .notification-panel.is-full {
-  width: min(800px, calc(100vw - var(--app-space) - 32px));
+  width: min(800px, calc(100vw - 32px));
 }
 .notification-panel header,
 .notification-panel footer {
