@@ -309,7 +309,8 @@ def main(argv=None):
                     retry = max(retry, time.time() + int(header) if header and header.isdecimal() else email.utils.parsedate_to_datetime(header).timestamp() if header else float(reset or 0))
                 except (TypeError, ValueError):
                     pass
-            status(phase='ready' if read('pending.json') else 'error', error=str(error), failures=failures, nextCheck=int(retry * 1000) if args.check else previous.get('nextCheck', 0))
+            pending = read('pending.json')
+            status(phase='ready' if pending else 'error', availableVersion=pending.get('version', previous.get('availableVersion')), error=str(error), failures=failures, nextCheck=int(retry * 1000) if args.check else previous.get('nextCheck', 0))
             raise
 
 

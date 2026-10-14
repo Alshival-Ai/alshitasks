@@ -268,10 +268,10 @@ class Updates extends EventEmitter {
       const checked = this.now();
       this.saved.lastChecked = checked;
       this.saved.nextCheck = checked + WEEK;
-      this.saved.failures = 0;
       this.publish({ lastChecked: checked, nextCheck: checked + WEEK });
       if (!newer(selected.version, this.options.version)) {
         this.pending = null;
+        this.saved.failures = 0;
         delete this.saved.pending;
         this.persist();
         this.publish({ phase: "current", availableVersion: null });
@@ -306,6 +306,7 @@ class Updates extends EventEmitter {
           fs.rmSync(temporary, { force: true });
         }
       }
+      this.saved.failures = 0;
       this.pending = { ...selected, sha256: expected };
       this.saved.pending = {
         version: selected.version,
@@ -333,6 +334,7 @@ class Updates extends EventEmitter {
       this.persist();
       this.publish({
         phase: this.pending ? "ready" : "error",
+        ...(this.pending ? { availableVersion: this.pending.version, progress: 100 } : {}),
         error:
           error.message ||
           "Could not check for updates. Try again when connected.",

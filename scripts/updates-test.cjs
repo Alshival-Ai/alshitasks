@@ -209,3 +209,19 @@ test("managed desktop reads local status without a second network schedule", asy
   assert.equal(f.calls(), 0);
   assert.throws(() => f.updater.setEnabled(false));
 });
+
+test("failed newer downloads retain the verified version and back off repeated download failures", async (t) => {
+  const f = fixture(t);
+  await f.updater.check();
+  f.options.release = async () => release("1.2.5");
+  f.options.text = async () => `${sha}  alshitasks_1.2.5_amd64.deb`;
+  f.options.download = async () => { throw new Error("Connection lost"); };
+  await f.updater.check();
+  assert.equal(f.updater.state.phase, "ready");
+  assert.equal(f.updater.state.availableVersion, "1.2.4");
+  assert.equal(f.updater.pending.version, "1.2.4");
+  assert.equal(f.updater.saved.failures, 1);
+  await f.updater.check();
+  assert.equal(f.updater.saved.failures, 2);
+  assert.equal(f.updater.saved.nextCheck - f.options.now(), 21600000);
+});
