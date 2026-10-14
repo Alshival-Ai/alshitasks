@@ -82,11 +82,14 @@ Architecture: amd64
 Maintainer: Alshival.Ai <support@alshival.ai>
 Section: utils
 Priority: optional
-Depends: python3 (>= 3.12), python3-jsonschema, python3-gi, libsecret-tools, libsecret-1-0, libgtk-3-0t64, libnss3, libasound2t64, libgbm1, libxss1, libnotify-bin, libglib2.0-bin, xdg-utils
+Depends: python3 (>= 3.12), python3-jsonschema, python3-gi, libsecret-tools, libsecret-1-0, libgtk-3-0t64, libnss3, libasound2t64, libgbm1, libxss1, libnotify-bin, libglib2.0-bin, xdg-utils, pkexec, polkitd
 Recommends: iputils-ping, python3-psycopg, python3-pymysql, python3-redis, python3-pymongo
 Description: Alshival.Ai standalone Linux desktop application
  Local-first boards, resources, logs, monitoring, SSH aliases and optional portal sync.
 """)
+policy = stage / "usr/share/polkit-1/actions/ai.alshival.alshitasks.policy"
+policy.parent.mkdir(parents=True, exist_ok=True)
+shutil.copy2(root / "scripts/ai.alshival.alshitasks.policy", policy)
 # Chromium needs its setuid helper on hosts that restrict unprivileged user namespaces.
 (lib / "electron/chrome-sandbox").chmod(0o4755)
 output = root / "build" / f"alshitasks_{version}_amd64.deb"

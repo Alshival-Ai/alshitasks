@@ -1,0 +1,6 @@
+[Unit]
+Description=Install a staged AlshiTasks update when desktop sessions have closed
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -I /usr/local/lib/alshival-desktop-updates/update-linux.py --pending
+TimeoutStartSec=20min

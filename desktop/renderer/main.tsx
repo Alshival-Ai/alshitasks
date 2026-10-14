@@ -1,3 +1,4 @@
+import { useUpdates, UpdateSettings } from "./Updates";
 import {
   WorkspaceDirectory,
   WorkspaceList,
@@ -40,6 +41,8 @@ function NavIcon({ name }: { name: string }) {
   );
 }
 function App() {
+  const updateState = useUpdates();
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const [expanded, setExpanded] = useState(
     () =>
       window.innerWidth > 900 &&
@@ -55,6 +58,13 @@ function App() {
   }, [expanded]);
   const navigationGuard = useRef<(() => boolean) | null>(null);
   const [workspace, setWorkspace] = useState(LOCAL_WORKSPACE);
+  useEffect(() => {
+    const prepare = (event: Event) => {if (navigationGuard.current?.() === false) event.preventDefault();};
+    window.addEventListener('alshitasks:prepare-update', prepare);
+    return () => window.removeEventListener('alshitasks:prepare-update', prepare);
+  }, []);
+  useEffect(() => {setUpdateDismissed(false);}, [updateState?.availableVersion]);
+
 
   const [accountInfo, setAccountInfo] = useState<any>({});
   const [narrow, setNarrow] = useState(() => window.innerWidth <= 900);
@@ -283,6 +293,8 @@ function App() {
     setMessage("");
     return true;
   };
+  useEffect(() => window.tasks.onUpdatesOpen?.(() => {showTab("Settings");}), []);
+
   const setStartup = (value: string) => {
     setStartupValue(value);
     writeDeviceState(accountInfo.account?.id || "local", "startup", value);
@@ -414,7 +426,7 @@ function App() {
         id="app-sidebar"
         className="app-sidebar"
         aria-label="Alshival navigation"
-        inert={narrow && !expanded}
+        inert={(narrow && !expanded) || updateState?.phase === "installing"}
         role={narrow && expanded ? "dialog" : undefined}
         aria-modal={narrow && expanded ? true : undefined}
       >
@@ -503,7 +515,7 @@ function App() {
           onClick={() => setExpanded(false)}
         />
       )}
-      <main className="app-content" inert={narrow && expanded}>
+      <main className="app-content" inert={(narrow && expanded) || updateState?.phase === "installing"}>
         <header className="app-header">
           <button
             className="app-mobile-toggle"
@@ -530,8 +542,13 @@ function App() {
             select={changeWorkspace}
             directory={() => showTab("Workspaces")}
           />
+          {updateState?.phase === 'ready' && !updateDismissed && <div className="update-actions update-ready" aria-label="Update ready">
+            <button className="button btn-frost" onClick={() => void window.tasks.installUpdate(true)}>Restart to update</button>
+            <button className="button btn-frost" onClick={() => setUpdateDismissed(true)}>Later</button>
+          </div>}
           <HeaderMenu label={accountInfo.account ? "Account" : "Settings"}>
             <button onClick={() => showTab("Settings")}>Device settings</button>
+            <button onClick={() => {if (showTab("Settings")) void window.tasks.checkUpdates();}}>Check for Updates</button>
             {accountInfo.account && (
               <button
                 onClick={() =>
@@ -660,6 +677,7 @@ function App() {
           {tab === "Settings" && (
             <>
               <h1>Settings</h1>
+              <UpdateSettings state={updateState} />
               <section>
                 <h2>Startup</h2>
                 <label>
@@ -1270,6 +1288,7 @@ function App() {
           )}
         </div>
       </main>
+      {updateState?.phase === 'installing' && <div className="update-installing" role="status">Installing the update… Please complete any system authorization prompt.</div>}
     </>
   );
 }

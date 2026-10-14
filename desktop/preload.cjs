@@ -4,6 +4,20 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     request: (path, method = "GET", body) =>
       ipcRenderer.invoke("tasks:request", path, method, body),
+    getUpdates: () => ipcRenderer.invoke("tasks:updates-get"),
+    checkUpdates: () => ipcRenderer.invoke("tasks:updates-check"),
+    setAutomaticUpdates: enabled => ipcRenderer.invoke("tasks:updates-enabled", enabled),
+    installUpdate: relaunch => ipcRenderer.invoke("tasks:updates-install", relaunch),
+    onUpdates: callback => {
+      const listener = (_event, state) => callback(state);
+      ipcRenderer.on("tasks:updates-changed", listener);
+      return () => ipcRenderer.removeListener("tasks:updates-changed", listener);
+    },
+    onUpdatesOpen: callback => {
+      const listener = () => callback();
+      ipcRenderer.on("tasks:updates-open", listener);
+      return () => ipcRenderer.removeListener("tasks:updates-open", listener);
+    },
     getStartup: () => ipcRenderer.invoke("tasks:startup-get"),
     setStartup: (enabled) => ipcRenderer.invoke("tasks:startup-set", enabled),
     windowAction: (action) => ipcRenderer.invoke("tasks:window", action),
