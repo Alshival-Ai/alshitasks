@@ -4,12 +4,22 @@
 .shared-project[data-shared-project] .sp-stack .sp-card h4 { margin: 4px 24px 8px 0; line-height: 1.4; }
 .shared-project[data-shared-project] .sp-card-kind { margin: 0 0 4px; }
 .shared-project[data-shared-project] .sp-move { margin-top: 6px; }
-.sp-task-menu { position: absolute; right: 10px; top: 8px; z-index: 2; }
-.sp-task-menu summary { cursor: pointer; padding: 4px; list-style: none; }
-.sp-task-menu summary::-webkit-details-marker { display: none; }
-.sp-task-menu[open] { background: var(--paper); border: 1px solid var(--line); padding: 6px; border-radius: 8px; box-shadow: 0 8px 24px #0002; }
-.sp-task-menu button { display: block; margin-top: 6px; }
-.dark-style .shared-project .sp-task-menu .button.btn-frost { background: #1e293b !important; color: #e2e8f0 !important; }
+.sp-task-menu { position: absolute; right: 8px; top: 8px; z-index: 2; }
+.shared-project .sp-card:has(.sp-task-menu[open]) { z-index: 5; }
+.sp-task-menu > summary { display: grid; place-items: center; width: 30px; height: 30px; padding: 0; border-radius: 7px; color: var(--muted); cursor: pointer; list-style: none; transition: background .15s, color .15s; }
+.sp-task-menu > summary::-webkit-details-marker { display: none; }
+.sp-task-menu > summary::marker { content: ''; }
+.sp-task-menu > summary:hover, .sp-task-menu[open] > summary { background: color-mix(in srgb, var(--ink, #17212b) 8%, transparent); color: var(--ink); }
+.sp-task-menu > summary:focus-visible, .sp-task-menu .sp-task-action:focus-visible { outline: 2px solid var(--sp-accent); outline-offset: 2px; }
+.sp-task-menu svg { width: 16px; height: 16px; flex: 0 0 16px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sp-task-menu-panel { position: fixed; inset: auto; margin: 0; width: 208px; max-width: calc(100vw - 16px); padding: 5px; background: var(--surface, #fff); color: var(--ink, #17212b); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 4px 8px #0000000a, 0 12px 32px #00000026; }
+.shared-project .sp-task-menu .sp-task-action { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 38px; margin: 0; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; box-shadow: none; color: inherit; font: inherit; font-size: 12px; font-weight: 500; line-height: 1.4; text-align: left; cursor: pointer; }
+.shared-project .sp-task-menu .sp-task-action:hover, .shared-project .sp-task-menu .sp-task-action:focus-visible { background: color-mix(in srgb, currentColor 8%, transparent); }
+.sp-task-menu-separator { height: 1px; margin: 4px 5px; background: var(--line); }
+.shared-project .sp-task-menu .sp-task-action-danger { color: #be353d; }
+.dark-style .sp-task-menu-panel { background: #20252d; color: #e7eaf0; border-color: #ffffff1f; box-shadow: 0 8px 32px #0006; }
+.dark-style .sp-task-menu > summary:hover, .dark-style .sp-task-menu[open] > summary { background: #ffffff12; color: #e7eaf0; }
+.dark-style .shared-project .sp-task-menu .sp-task-action-danger { color: #ff9298; }
 .sp-column[data-status-color='gray'] { --status-color: #999b9e; }
 .sp-column[data-status-color='blue'] { --status-color: #5b92b3; }
 .sp-column[data-status-color='purple'] { --status-color: #9571c0; }
