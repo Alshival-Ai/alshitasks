@@ -1,6 +1,6 @@
 # People and droids
 
-Open **Team** in the workspace navigation and choose **Create profile**. A profile has a name, a Person or Droid type, and active status. It does not create a login account or require an email address. Existing local contacts retain their IDs and assignments.
+Open **Settings → Device settings → Manage people and droids**, then choose **Create profile**. Desktop and browser use the same navigation and profile editor. A profile has a name, a Person or Droid type, and active status. It does not create a login account or require an email address. Existing local contacts retain their IDs and assignments.
 
 Assign a profile as the task assignee or reviewer. These must be different identities. In the profile panel, create a credential with the required workspace permissions and optional expiration. Copy the returned MCP setup. Desktop credentials use the operating system credential store; the self-hosted browser returns a Bearer token once. Credentials never synchronize to the portal.
 

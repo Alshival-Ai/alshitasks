@@ -89,7 +89,11 @@ export async function verifyServerUI(page) {
 
 export async function verifyTeamUI(page) {
   const sidebar = page.locator('.app-sidebar');
-  await sidebar.getByRole('button', {name:'Team', exact:true}).click();
+  await expect(sidebar.getByRole('button', {name:'Team', exact:true})).toHaveCount(0);
+  await page.locator('.wd-menu-toggle').click();
+  await expect(page.locator('.wd-header-menu').getByRole('button', {name:'Team', exact:true})).toHaveCount(0);
+  await page.getByRole('button', {name:'Device settings', exact:true}).click();
+  await page.getByRole('button', {name:'Manage people and droids', exact:true}).click();
   const team = page.getByRole('region', {name:'Team', exact:true});
   await expect(team).toBeVisible();
   await team.getByRole('button', {name:'Create profile', exact:true}).click();

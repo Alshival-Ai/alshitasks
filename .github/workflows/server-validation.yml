@@ -2,7 +2,7 @@ name: Validate browser and headless server
 on:
   pull_request:
   push:
-    branches: [feat/server-mode]
+    branches: [main, feat/server-mode]
   workflow_dispatch:
 permissions:
   contents: read
@@ -29,5 +29,16 @@ jobs:
       - run: node scripts/server-browser-test.mjs
         env:
           ALSHITASKS_TEST_PYTHON: python
+      - name: Compare the browser with Electron
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-jsonschema python3-pip libsecret-tools xvfb x11-utils
+          vendor_python_version=$(/usr/bin/python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+          /usr/bin/python3 -m pip install --break-system-packages --target "service/_vendor/$vendor_python_version" -r service/log-requirements.txt
+          xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/server-browser-test.mjs
+        env:
+          ALSHITASKS_TEST_PYTHON: python
+          ALSHITASKS_COMPARE_DESKTOP: '1'
       - run: docker build -f Dockerfile.server -t alshitasks-server:validation .
         if: runner.os == 'Linux'

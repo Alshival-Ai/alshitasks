@@ -1,7 +1,7 @@
 # Alshitask Server
 
 The same workspace UI and MCP tools can run without Electron. Each server has
-one owner. Portal sync is optional; team collaboration remains in Alshival.Ai.
+one owner. Portal sync is optional; local Person/Droid identities and assignments work without an Alshival.Ai account.
 Server instances have their own storage and must not share a live desktop data directory.
 
 ## Native setup (Windows or Linux)
@@ -156,18 +156,18 @@ its authenticated HTTP transport, downloads, sign-in and server settings. Native
 window controls, startup integration and installer updates are desktop-only.
 Do not fork the shared workspace components to make browser UI changes.
 
-Until this preview is merged, build from `feat/server-mode`. The branch now
-includes the desktop changes through `f7edc9a`, including note/resource Trash
-buttons, recoverable deletion, task action popovers and the workspace switcher.
-Older server images retain the UI that was bundled when they were built; pulling
-source alone does not update an already running image or process.
+Server mode is included in `main`. Build both apps from the same commit to
+compare the same UI. Older server images retain the UI bundled when they were
+built; pulling source alone does not update an already running image or process.
+Profile management lives under Settings → Device settings → Manage people and
+droids in both apps; workspace and board navigation stays focused on work.
 
 For an existing Compose checkout, after taking the backup described above:
 
 ```sh
 git fetch origin
-git switch feat/server-mode
-git merge --ff-only origin/feat/server-mode
+git switch main
+git merge --ff-only origin/main
 docker compose -f compose.server.yml build
 docker compose -f compose.server.yml up -d --no-deps alshitasks
 ```
@@ -183,3 +183,9 @@ built assets use content hashes.
 task creation and Markdown preview, both themes, narrow navigation/editing, and
 note/resource deletion and restoration with relationships preserved. The test
 creates its own isolated instance; never point it at a user's workspace.
+
+Set `ALSHITASKS_COMPARE_DESKTOP=1` when running the browser test to also launch
+an isolated Electron instance and compare its navigation, board controls, task
+forms, themes and profile editor directly with the browser. The Linux CI job
+runs this under Xvfb with desktop backend dependencies installed. Screenshots
+of both renderers are saved in `build/parity-*.png`.

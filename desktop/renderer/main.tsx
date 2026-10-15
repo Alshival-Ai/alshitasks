@@ -463,8 +463,7 @@ function App() {
               current={["Projects", "Team"].includes(tab) ? workspace : ""}
               select={changeWorkspace}
             >
-              <button className="wd-directory-link" onClick={() => showTab("Team")} aria-label="Team" title="Team" aria-current={tab === "Team" ? "page" : undefined}><NavIcon name="team" /><span className="nav-label">Team</span></button>
-          {tab === "Projects" && multipleBoards && (
+              {tab === "Projects" && multipleBoards && (
                 <>
                   <nav
                     className="wd-board-children"
@@ -551,7 +550,6 @@ function App() {
             <button className="button btn-frost" onClick={() => setUpdateDismissed(true)}>Later</button>
           </div>}
           <HeaderMenu label={accountInfo.account ? "Account" : "Settings"}>
-            <button onClick={() => showTab("Team")}>Team</button>
             <button onClick={() => showTab("Settings")}>Device settings</button>
             {!browser && <button onClick={() => {if (showTab("Settings")) void window.tasks.checkUpdates();}}>Check for Updates</button>}
             {accountInfo.account && (
@@ -647,7 +645,14 @@ function App() {
               synchronization is disabled.
             </p>
           )}
-          {tab === "Team" && <Team key={workspace} workspace={workspace} />}
+          {tab === "Team" && (
+            <>
+              <button className="button btn-frost" onClick={() => showTab("Settings")}>
+                Back to Settings
+              </button>
+              <Team key={workspace} workspace={workspace} />
+            </>
+          )}
           {tab === "Workspaces" && (
             <WorkspaceDirectory
               rows={availableWorkspaces}
@@ -684,6 +689,11 @@ function App() {
             <>
               <h1>Settings</h1>
               {browser && <button onClick={() => void api("/auth/logout", "POST").then(() => location.reload())}>Sign out of server</button>}
+              <section aria-labelledby="workspace-team-heading">
+                <h2 id="workspace-team-heading">Workspace team</h2>
+                <p>Manage people and droids for {selectedWorkspace?.name || "Local workspace"}.</p>
+                <button onClick={() => showTab("Team")}>Manage people and droids</button>
+              </section>
               {!browser && <UpdateSettings state={updateState} />}
               <section className="desktop-only">
                 <h2>Startup</h2>

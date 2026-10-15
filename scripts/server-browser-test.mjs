@@ -48,6 +48,11 @@ try {
   await page.getByRole("button", {name:"Sign in", exact:true}).click();
   await expect(page.locator(".project-columns-adapter")).toBeVisible({timeout:20000});
   await expect(page.getByRole("button", {name:"Close window"})).toBeHidden();
+  if (process.env.ALSHITASKS_COMPARE_DESKTOP === '1') {
+    if (remote) throw new Error('Desktop parity requires an isolated local fixture');
+    const { verifyDesktopParity } = await import('./desktop-browser-parity.mjs');
+    await verifyDesktopParity(page);
+  }
   await verifyServerUI(page);
   await verifyTeamUI(page);
   const created = await page.evaluate(async () => {
