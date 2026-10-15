@@ -1,3 +1,7 @@
+import {
+  CardLifecycleDialog,
+  isRemovedCard,
+} from "./project-board/CardLifecycle";
 import { TaskGraph } from "./project-board/TaskGraph";
 import {
   TaxonomyFilter,
@@ -93,6 +97,7 @@ export function ProjectsApp({
     [showArchived, setShowArchived] = useState(false),
     [expanded, setExpanded] = useState(false),
     [filters, setFilters] = useState(false);
+  const [lifecycleItem, setLifecycleItem] = useState<Item | null>(null);
   const [opened, setOpened] = useState<string[]>([]),
     [focused, setFocused] = useState("");
   const [selected, setSelected] = useState<Item | null>(null),
@@ -193,6 +198,7 @@ export function ProjectsApp({
     else noteDrafts.current.delete(id);
   }, []);
   const leaveBoard = () =>
+    !lifecycleItem &&
     leave() &&
     (!noteDrafts.current.size ||
       window.confirm("Some notes have not saved. Discard those changes?"));
@@ -300,6 +306,30 @@ export function ProjectsApp({
     }
     return updated;
   }
+  const lifecycle = (item: Item) => {
+    if (canWrite && (manageStatuses || actor === item.author_id))
+      setLifecycleItem(item);
+  };
+  const commitLifecycle = async (item: Item, data: Partial<ItemData>) => {
+    if (!canWrite || !(manageStatuses || actor === item.author_id))
+      throw new Error("You no longer have permission to manage this card.");
+    const affected = new Set([
+      item.id,
+      ...items
+        .filter((row) => row.data.resource_id === item.id)
+        .map((row) => row.id),
+    ]);
+    if (
+      [...noteDrafts.current].some((id) => affected.has(id)) ||
+      (selected && affected.has(selected.id) && dirty.current)
+    )
+      throw new Error(
+        "Save your changes before deleting or restoring this card. Cancel to return to your draft.",
+      );
+    await change(item, data);
+    setOpened((ids) => ids.filter((id) => id !== item.id));
+    if (focused === item.id) setFocused("");
+  };
   const safeChange = async (item: Item, data: Partial<ItemData>) => {
     try {
       await change(item, data);
@@ -655,7 +685,16 @@ export function ProjectsApp({
                 <div className="sp-desktop-sections">
                   <Canvas
                     key={`${storageNamespace}:${activeBoard}`}
-                    items={activeItems}
+                    items={boardItems}
+                    canSwitchCards={() => {
+                      if (!noteDrafts.current.size) return true;
+                      setError(
+                        "Wait for your changes to save before switching card views.",
+                      );
+                      return false;
+                    }}
+                    lifecycle={lifecycle}
+                    canWrite={canWrite}
                     members={members}
                     actor={actor}
                     manager={manageStatuses}
@@ -864,8 +903,10 @@ export function ProjectsApp({
           return (
             item &&
             !item.data.deleted &&
-            !item.data.archived && (
+            !isRemovedCard(item) && (
               <PaperCard
+                lifecycle={lifecycle}
+                canWrite={canWrite}
                 authorName={
                   members.find((m) => m.id === item.author_id)?.display_name
                 }
@@ -897,6 +938,13 @@ export function ProjectsApp({
             )
           );
         })}
+        {lifecycleItem && (
+          <CardLifecycleDialog
+            item={lifecycleItem}
+            commit={commitLifecycle}
+            close={() => setLifecycleItem(null)}
+          />
+        )}
         {editorOpen && (
           <aside
             className={`project-item-pane${kind === "resource" ? " resource-pane" : ""}`}

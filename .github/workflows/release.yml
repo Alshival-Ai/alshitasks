@@ -55,6 +55,7 @@ jobs:
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/updates-ui-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/logs-desktop-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/workspace-icons-test.mjs
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/card-lifecycle-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/task-board-test.mjs
       - name: Check packaged tray and startup
         timeout-minutes: 5
@@ -69,6 +70,7 @@ jobs:
           path: |
             /tmp/alshitasks-task-board-failure.png
             /tmp/alshitasks-task-board-trace.zip
+            /tmp/alshitasks-card-failure.png
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: steps.version.outputs.publish == 'true'
@@ -112,6 +114,8 @@ jobs:
           node scripts/logs-desktop-test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/workspace-icons-test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/card-lifecycle-test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
