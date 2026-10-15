@@ -13,7 +13,11 @@ if os.environ.get('GITHUB_ACTIONS') != 'true' and not (Path('/.dockerenv').exist
 windows = sys.platform == 'win32'
 new = Path(sys.argv[1]).resolve()
 repo = 'https://api.github.com/repos/Alshival-Ai/alshitasks/releases/latest'
-with urllib.request.urlopen(urllib.request.Request(repo, headers={'User-Agent': 'Alshival-upgrade-acceptance'}), timeout=30) as response:
+headers = {'User-Agent': 'Alshival-upgrade-acceptance', 'Accept': 'application/vnd.github+json'}
+token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
+if token:
+    headers['Authorization'] = 'Bearer ' + token
+with urllib.request.urlopen(urllib.request.Request(repo, headers=headers), timeout=30) as response:
     release = json.load(response)
 version = release['tag_name'].removeprefix('v')
 name = f'alshitasks_{version}_x64_setup.exe' if windows else f'alshitasks_{version}_amd64.deb'
