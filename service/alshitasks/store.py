@@ -377,9 +377,9 @@ class Store:
                 raise Problem("Local workspace publication is in progress", 409)
             from .team import actor, validate_assignment
             validate_assignment(self, data)
+            self.validate(kind, data, item_id)
             if actor().get('workspace_id') and data.get('reviewer') and data.get('state') == 'done':
                 raise Problem('Create reviewed work before requesting approval', 403)
-            self.validate(kind, data, item_id)
             stamp = now()
             try:
                 self.db.execute(
@@ -451,8 +451,8 @@ class Store:
                 data["status_id"] = status["id"] if status else None
             from .team import validate_assignment, validate_review
             validate_assignment(self, data, old["data"])
-            validate_review(old["data"], data)
             self.validate(old["kind"], data, item_id)
+            validate_review(old["data"], data)
             if old["data"].get("deleted") and not (body.get("restoring") or patch == {"deleted": False}):
                 raise Problem("Restore the record before editing", 409)
             self.db.execute(
@@ -481,6 +481,13 @@ class Store:
 
     def action(self, item_id, body):
         action = body.get("action")
+        from .team import actor
+        current = actor()
+        if current.get('workspace_id') and action in ('approve', 'changes'):
+            data = self.item(item_id)['data']
+            if ('project:approve' not in current.get('scopes', []) or data.get('reviewer') != current['id']
+                    or data.get('assignee') == current['id'] or data.get('state') != 'review'):
+                raise Problem('Only the separate assigned reviewer can accept work or request changes', 403)
         flags = {
             "trash": dict(deleted=True),
             "restore": dict(deleted=False),

@@ -1064,7 +1064,7 @@ export function ProjectsApp({
                     >
                       <option value="">Unassigned</option>
                       {members.map((member) => (
-                        <option key={member.id} value={member.id} disabled={member.active === false}>
+                        <option key={member.id} value={member.id} disabled={member.active === false && selected?.data[name as "assignee" | "reviewer"] !== member.id}>
                           {member.display_name}{member.kind === "droid" ? " · Droid" : ""}{member.active === false ? " · Inactive" : ""}
                         </option>
                       ))}

@@ -1,5 +1,6 @@
 """Local HTTP transaction boundary: external operations never own the database."""
 
+import json
 from urllib.parse import urlsplit, parse_qs, urlencode
 from .store import Problem, uid
 
@@ -32,8 +33,10 @@ def handle(api, path, method, body, owner, token):
         with store.lock:
             ident = connection_id(store, query['workspace_id'])
             connection = Portal(store).connection(ident)
-            if 'team-profiles-v1' not in __import__('json').loads(connection['capabilities']).get('features', []):
+            if 'team-profiles-v1' not in json.loads(connection['capabilities']).get('features', []):
                 raise Problem('This portal needs an update before it can manage profiles', 409)
+            if 'team:manage' not in store.setting('workspace:' + ident, {}).get('scopes', []):
+                raise Problem('Sign in again and allow team management to manage connected workspace profiles', 403)
             send, check = guarded_transport(store, connection, remote)
         credential = Portal(store).token(connection)
         result = send(connection['origin'], '/desktop/v1/workspaces/' + connection['workspace'] + '/team', credential,
