@@ -2,6 +2,42 @@
 window.AlshivalResponsiveBoard = (root, lifecycle, actions) => {
   const content = root.querySelector('[data-shared-project-content]');
   if (!content?.querySelector('.sp-columns')) return null;
+  lifecycle.listen(root, 'toggle', event => {
+    const menu = event.target;
+    if (!menu.matches('.sp-task-menu')) return;
+    const panel = menu.querySelector('.sp-task-menu-panel');
+    if (!menu.open) { panel.hidePopover(); return; }
+    root.querySelectorAll('.sp-task-menu[open]').forEach(other => {
+      if (other !== menu) other.open = false;
+    });
+    panel.showPopover();
+    const anchor = menu.querySelector('summary').getBoundingClientRect();
+    const box = panel.getBoundingClientRect();
+    panel.style.left = `${Math.max(8, Math.min(anchor.right - box.width, window.innerWidth - box.width - 8))}px`;
+    panel.style.top = `${Math.max(8, Math.min(anchor.bottom + 5, window.innerHeight - box.height - 8))}px`;
+  }, { capture: true });
+  const closeTaskMenus = () => root.querySelectorAll('.sp-task-menu[open]').forEach(menu => { menu.open = false; });
+  lifecycle.listen(window, 'resize', closeTaskMenus);
+  lifecycle.listen(document, 'scroll', closeTaskMenus, { capture: true, passive: true });
+  // Keep native details keyboard behavior, with predictable dismissal on the board.
+  lifecycle.listen(document, 'pointerdown', event => {
+    root.querySelectorAll('.sp-task-menu[open]').forEach(menu => {
+      if (!menu.contains(event.target)) menu.open = false;
+    });
+  }, { capture: true });
+  lifecycle.listen(document, 'keydown', event => {
+    if (event.key !== 'Escape') return;
+    const menu = root.querySelector('.sp-task-menu[open]');
+    if (!menu) return;
+    menu.open = false;
+    menu.querySelector('summary').focus();
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { capture: true });
+  lifecycle.listen(root, 'focusout', event => {
+    const menu = event.target.closest('.sp-task-menu[open]');
+    if (menu && event.relatedTarget && !menu.contains(event.relatedTarget)) menu.open = false;
+  });
   const read = (storage, key, fallback) => {
     try {
       return JSON.parse(window[storage].getItem(key)) ?? fallback;

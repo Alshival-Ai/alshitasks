@@ -1,0 +1,4 @@
+#!/bin/sh
+# This unprivileged PolicyKit action cannot install packages or accept arguments.
+if [ "$#" -ne 0 ]; then exit 2; fi
+exec /usr/bin/python3 -I /usr/lib/alshitasks/desktop/update-linux.py --check --force

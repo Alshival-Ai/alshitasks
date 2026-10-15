@@ -1,3 +1,4 @@
+import { verifyServerUI } from "./server-ui-parity.mjs";
 import { chromium, expect } from "@playwright/test";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, mkdir } from "node:fs/promises";
@@ -24,6 +25,12 @@ try {
     server = spawn(python, ["service/alshitasks-cli.py", "server", "--data-dir", fixture.root, "--key-file", fixture.key, "--port", String(port), "--base-url", url], {stdio: "pipe", windowsHide: true});
     server.stderr.on("data", data => { if (String(data).includes("Traceback")) process.stderr.write("Server failed; inspect fixture\n"); });
   }
+  if (fixture.password_encrypted) {
+    // Decrypt only in memory; never print or persist the fixture credential.
+    fixture.password = execFileSync(python, ['-c',
+      "import json,sys; from pathlib import Path; from cryptography.fernet import Fernet; f=json.load(sys.stdin); sys.stdout.write(Fernet(Path(f['key']).read_bytes()).decrypt(f['password_encrypted'].encode()).decode())"],
+      {input: JSON.stringify(fixture), encoding: 'utf8'});
+  }
   for (let i=0; i<100; i++) {
     try { if ((await fetch(url + "/healthz")).ok) break; } catch {}
     if (i === 99) throw new Error("Server did not start");
@@ -41,6 +48,7 @@ try {
   await page.getByRole("button", {name:"Sign in", exact:true}).click();
   await expect(page.locator(".project-columns-adapter")).toBeVisible({timeout:20000});
   await expect(page.getByRole("button", {name:"Close window"})).toBeHidden();
+  await verifyServerUI(page);
   const created = await page.evaluate(async () => {
     const item = await window.tasks.request('/v1/projects/items', 'POST', {idempotency_key: crypto.randomUUID(),kind:'task',data:{title:'Browser acceptance task'}});
     const key = await window.tasks.request('/v1/agent-grants','POST',{name:'Acceptance agent',scopes:['project:read','project:write']});

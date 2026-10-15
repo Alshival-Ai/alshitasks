@@ -3,6 +3,12 @@ declare global {
   interface Window {
     tasks: {
       platform?: "desktop" | "browser";
+      getUpdates: () => Promise<import('./Updates').UpdateState>;
+      checkUpdates: () => Promise<import('./Updates').UpdateState>;
+      setAutomaticUpdates: (enabled: boolean) => Promise<import('./Updates').UpdateState>;
+      installUpdate: (relaunch: boolean) => Promise<boolean>;
+      onUpdates: (callback: (state: import('./Updates').UpdateState) => void) => () => void;
+      onUpdatesOpen: (callback: () => void) => () => void;
       request: (path: string, method?: string, body?: unknown) => Promise<any>;
       getStartup: () => Promise<{ enabled: boolean }>;
       setStartup: (enabled: boolean) => Promise<{ enabled: boolean }>;

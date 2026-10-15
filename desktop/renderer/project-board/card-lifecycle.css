@@ -1,0 +1,124 @@
+.projects-app .card-lifecycle-button {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+}
+.projects-app .card-lifecycle-button:hover {
+  opacity: 1;
+  background: #ffffff65;
+}
+.projects-app .card-lifecycle-button:focus-visible {
+  opacity: 1;
+  outline: 2px solid #675295;
+  outline-offset: 2px;
+}
+.projects-app .sp-sticky > .card-lifecycle-button {
+  position: absolute;
+  top: 3px;
+  right: 6px;
+  z-index: 4;
+}
+.projects-app .sp-sticky:has(> .card-lifecycle-button) .sp-note-controls {
+  right: 40px;
+}
+.projects-app .sp-sticky:has(> .card-lifecycle-button) .desktop-note-expand {
+  right: 76px;
+}
+.projects-app .sp-sticky:has(> .card-lifecycle-button) .sp-note-handle {
+  width: calc(100% - 112px);
+}
+.projects-app
+  .sp-sticky.sp-resource:has(> .card-lifecycle-button)
+  .sp-note-handle {
+  width: 32px;
+  right: 76px;
+}
+.projects-app .sp-sticky.sp-resource > .card-lifecycle-button {
+  top: 19px;
+  right: 40px;
+}
+.projects-app .card-deleted-toggle[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 1px currentColor;
+}
+.card-lifecycle-dialog {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 32px));
+  padding: 26px;
+  border: 1px solid var(--line, #d5d0c8);
+  border-radius: 18px;
+  background: var(--bright, #fffaf2);
+  color: var(--ink, #302d28);
+  box-shadow: 0 24px 80px #0004;
+  font-family: "Public Sans", system-ui, sans-serif;
+}
+.card-lifecycle-dialog::backdrop {
+  background: #17152266;
+  backdrop-filter: blur(3px);
+}
+.card-lifecycle-dialog h2 {
+  font-size: 21px;
+  margin: 0 0 14px;
+}
+.card-lifecycle-dialog p {
+  line-height: 1.6;
+  font-size: 14px;
+}
+.card-lifecycle-dialog .card-lifecycle-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.card-lifecycle-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 24px;
+}
+.card-lifecycle-dialog button {
+  padding: 10px 16px;
+  border: 1px solid var(--line, #d5d0c8);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.card-lifecycle-dialog button:focus-visible {
+  outline: 2px solid #8d76b3;
+  outline-offset: 3px;
+}
+.card-lifecycle-dialog .card-lifecycle-confirm {
+  background: #994c48;
+  color: white;
+  border-color: transparent;
+}
+.card-lifecycle-dialog .card-lifecycle-error {
+  color: var(--ink, #302d28);
+  border-left: 3px solid #b46c65;
+  padding-left: 12px;
+}
+.card-lifecycle-dialog button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.projects-app .connected-home-note {
+  position: relative;
+}
+.projects-app .connected-home-note:has(> .card-lifecycle-button) {
+  padding-right: 44px;
+}
+.projects-app .connected-home-note > .card-lifecycle-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+}

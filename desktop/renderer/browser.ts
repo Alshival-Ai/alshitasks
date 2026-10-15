@@ -1,3 +1,4 @@
+import { version } from "../../package.json";
 /** Browser implementation of the same interface exposed by Electron preload. */
 let csrf = "";
 let authenticating: Promise<void> | undefined;
@@ -79,6 +80,10 @@ export async function initializeBrowser() {
   else throw new Error("Server unavailable; reload to retry");
   window.tasks = {
     platform: "browser", request,
+    getUpdates: async () => ({phase: "unsupported", currentVersion: version, availableVersion: null,
+      progress: null, error: "", enabled: false, lastChecked: null, nextCheck: null, managed: true, supported: false}),
+    checkUpdates: unsupported, setAutomaticUpdates: unsupported, installUpdate: unsupported,
+    onUpdates: () => () => {}, onUpdatesOpen: () => () => {},
     getStartup: async () => ({enabled: false}), setStartup: unsupported,
     windowAction: async () => false, theme: async () => {}, onWindowState: () => () => {},
     initialNotification: async () => null, onNotification: () => () => {},

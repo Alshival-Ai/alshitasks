@@ -1,7 +1,6 @@
 """Independent graph, attachment and notification workers with bounded concurrency."""
 
 import random
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from .store import Problem
@@ -28,7 +27,11 @@ def due(store, connection):
     if pending or generation > store.setting("sync_ack:" + ident, 0):
         return "urgent"
     last = datetime.fromisoformat(connection["cursor"]).timestamp() if connection["cursor"] else 0
-    if time.time() >= schedule.get("poll_at", last + 30):
+    from .sync_schedule import live
+    deadline = schedule.get("poll_at", last + 30)
+    if not live(store, connection):
+        deadline = min(deadline, schedule.get("last_success", last) + 55)
+    if time.time() >= deadline:
         return "poll"
     return None
 
@@ -52,7 +55,9 @@ def sync_one(store, connection, force=False):
         with store.tx():
             check(store, connection, authorization)
             store.set_setting("sync_ack:" + ident, generation)
-            store.set_setting("sync:" + ident, {"state": "up-to-date", "poll_at": time.time() + random.uniform(27, 30)})
+            from .sync_schedule import interval
+            store.set_setting("sync:" + ident, {"state": "up-to-date", "last_success": time.time(),
+                                                "poll_at": time.time() + interval(store, connection)})
         store.sync_wake.set()
     except Exception as error:
         status = error.status if isinstance(error, Problem) else 503
@@ -111,7 +116,7 @@ def graph_loop(api, stop):
                 store.sync_active.discard(connection["id"])
             store.sync_wake.set()
 
-    with ThreadPoolExecutor(max_workers=4, thread_name_prefix="graph-sync") as pool, ThreadPoolExecutor(max_workers=1, thread_name_prefix="discovery") as discovery_pool:
+    with ThreadPoolExecutor(max_workers=2, thread_name_prefix="graph-sync") as pool, ThreadPoolExecutor(max_workers=1, thread_name_prefix="discovery") as discovery_pool:
         while not stop.is_set():
             store.sync_wake.wait(0.25)
             store.sync_wake.clear()
@@ -126,7 +131,7 @@ def graph_loop(api, stop):
             try:
                 with store.lock:
                     rows = connections(store)
-                    while len(active) < 4:
+                    while len(active) < 2:
                         connection = scheduler.choose(store, rows, active)
                         if connection is None:
                             break
@@ -174,4 +179,4 @@ def file_loop(api, stop):
 
 
 # Kept as the service entrypoint; listener lifecycle is isolated from graph work.
-from .live_sync import notification_loop
+from .live_sync import notification_loop as notification_loop

@@ -1,3 +1,4 @@
+import { CardLifecycleButton, isRemovedCard } from "./CardLifecycle";
 import { useEffect, useRef, useState } from "react";
 import { readDeviceState, writeDeviceState } from "../deviceState";
 import { type Item, type Change, type Member } from "./types";
@@ -17,7 +18,13 @@ export function Canvas({
   create,
   onDirty,
   expandedIds,
+  lifecycle,
+  canWrite,
+  canSwitchCards,
 }: {
+  lifecycle: (item: Item) => void;
+  canWrite: boolean;
+  canSwitchCards: () => boolean;
   expandedIds: string[];
   items: Item[];
   members: Member[];
@@ -30,6 +37,7 @@ export function Canvas({
   create: (kind: string) => void;
   onDirty: (id: string, dirty: boolean) => void;
 }) {
+  const [showDeleted, setShowDeleted] = useState(false);
   const [positions, setPositions] = useState<Positions>({}),
     [query, setQuery] = useState(""),
     [resourceKind, setResourceKind] = useState(""),
@@ -83,8 +91,11 @@ export function Canvas({
       window.removeEventListener("resize", cancel);
     };
   }, []);
-  const notes = items.filter((item) => item.kind === "note"),
-    resources = items.filter((item) => item.kind === "resource");
+  const cards = items.filter(
+    (item) => !item.data.deleted && isRemovedCard(item) === showDeleted,
+  );
+  const notes = cards.filter((item) => item.kind === "note"),
+    resources = cards.filter((item) => item.kind === "resource");
   const visible = [
     ...resources.filter(
       (item) =>
@@ -97,6 +108,7 @@ export function Canvas({
     ),
     ...notes.filter(
       (n) =>
+        showDeleted ||
         !n.data.resource_id ||
         !resources.some((r) => r.id === n.data.resource_id),
     ),
@@ -131,6 +143,16 @@ export function Canvas({
           </p>
         </div>
         <div className="sp-actions">
+          <button
+            type="button"
+            className="button btn-frost card-deleted-toggle"
+            aria-pressed={showDeleted}
+            onClick={() => {
+              if (canSwitchCards()) setShowDeleted(!showDeleted);
+            }}
+          >
+            Deleted items
+          </button>
           <button
             type="button"
             className="button btn matrix-btn"
@@ -217,12 +239,13 @@ export function Canvas({
         {visible.map((item) => {
           const resource = item.kind === "resource",
             canEdit =
-              !item.data.archived && (manager || actor === item.author_id);
+              !isRemovedCard(item) && (manager || actor === item.author_id);
           const point = moving?.id === item.id ? moving.at : positions[item.id];
           return (
             <div className="sp-note-slot" key={item.id}>
               <article
                 className={`sp-sticky${resource ? " sp-resource resource-sticker" : ""}${point ? " is-placed" : ""}${moving?.id === item.id ? " is-dragging" : ""}`}
+                data-item-id={item.id}
                 draggable={!resource && canEdit}
                 onDragStart={(event) => {
                   event.dataTransfer.setData(
@@ -241,6 +264,9 @@ export function Canvas({
                     : undefined
                 }
               >
+                {canWrite && (manager || actor === item.author_id) && (
+                  <CardLifecycleButton item={item} onAction={lifecycle} />
+                )}
                 <button
                   type="button"
                   className="sp-note-handle"
@@ -335,7 +361,13 @@ export function Canvas({
                       <button
                         className="project-text-button"
                         type="button"
-                        onClick={() => open(item)}
+                        onClick={() =>
+                          showDeleted
+                            ? canWrite &&
+                              (manager || actor === item.author_id) &&
+                              lifecycle(item)
+                            : open(item)
+                        }
                       >
                         {item.data.title}
                       </button>
@@ -365,7 +397,13 @@ export function Canvas({
                         type="button"
                         className="desktop-note-expand"
                         aria-label="Expand note"
-                        onClick={() => open(item)}
+                        onClick={() =>
+                          showDeleted
+                            ? canWrite &&
+                              (manager || actor === item.author_id) &&
+                              lifecycle(item)
+                            : open(item)
+                        }
                       >
                         ↗
                       </button>
@@ -382,7 +420,16 @@ export function Canvas({
                       />
                     )}
                     {expandedIds.includes(item.id) && (
-                      <button type="button" onClick={() => open(item)}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          showDeleted
+                            ? canWrite &&
+                              (manager || actor === item.author_id) &&
+                              lifecycle(item)
+                            : open(item)
+                        }
+                      >
                         {item.data.title} ↗
                       </button>
                     )}
@@ -394,8 +441,16 @@ export function Canvas({
         })}
         {!visible.length && (
           <div className="sp-empty">
-            <h3>Leave a little inspiration.</h3>
-            <p>Ideas, reminders and updates belong here.</p>
+            <h3>
+              {showDeleted
+                ? "No deleted items."
+                : "Leave a little inspiration."}
+            </h3>
+            <p>
+              {showDeleted
+                ? "Deleted notes and resources will appear here."
+                : "Ideas, reminders and updates belong here."}
+            </p>
             <button
               type="button"
               className="button btn matrix-btn"

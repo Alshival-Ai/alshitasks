@@ -119,7 +119,7 @@ def listen(store, connection, stop, generation, account_wide=True):
             token = Portal(store).token(connection)
             _, check = guarded_transport(store, connection, lambda: None)
             path = '/desktop/v1/events' if account_wide else '/desktop/v1/workspaces/' + connection['workspace'] + '/events'
-            request = urllib.request.Request(connection['origin'] + path, headers={'Authorization': 'Bearer ' + token, 'Accept': 'text/event-stream'})
+            request = urllib.request.Request(connection['origin'] + path, headers={'Authorization': 'Bearer ' + token, 'Accept': 'text/event-stream', 'X-Alshival-Desktop-Features': 'efficient-sync-v1'})
             check()
             with urllib.request.build_opener(NoRedirect).open(request, timeout=45) as stream:
                 if isinstance(stop, ListenerStop):
@@ -139,12 +139,27 @@ def listen(store, connection, stop, generation, account_wide=True):
                                 store.set_setting('discovery', {'next': 0})
                             break
                         if first:
-                            mark_changes(store, connection, recovered=True)
+                            from .sync_schedule import FEATURE as efficient
+                            if efficient not in json.loads(connection['capabilities']).get('features', []):
+                                mark_changes(store, connection, recovered=True)
+                            # Refresh capability identity on transport recovery, once per stream.
+                            discovery = store.setting('discovery', {})
+                            discovery.update(next=0, capabilities_at=0)
+                            store.set_setting('discovery', discovery)
                             first = False
                         set_health(store, connection, state='live', heartbeat=time.time(), next_retry=None)
                         if name == 'discovery':
-                            store.set_setting('discovery', {'next': 0})
+                            discovery = store.setting('discovery', {})
+                            discovery['next'] = 0
+                            store.set_setting('discovery', discovery)
                             store.sync_wake.set()
+                        elif name == 'notifications':
+                            from .notifications import account
+                            _, key = account(store)
+                            state = store.setting('notification_portal:' + key, {})
+                            store.set_setting('notification_notice:' + key, int(store.setting('notification_notice:' + key, 0)) + 1)
+                            state['next'] = 0
+                            store.set_setting('notification_portal:' + key, state)
                         elif name == 'changed':
                             if account_wide:
                                 mark_changes(store, connection, payload)

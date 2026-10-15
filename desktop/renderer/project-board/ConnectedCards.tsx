@@ -1,3 +1,4 @@
+import { CardLifecycleButton } from "./CardLifecycle";
 import { ResourceMonitoring } from "./ResourceMonitoring";
 import { ResourceLogs } from "./ResourceLogs";
 import { LocalSSH } from "./LocalSSH";
@@ -57,8 +58,22 @@ export function NoteMarkdown({
   );
 }
 
-export function MarkdownField({ label, name, defaultValue = "", maxLength = 20000, required = false, items = [], open = () => {} }: {
-  label: string; name: string; defaultValue?: string; maxLength?: number; required?: boolean; items?: Item[]; open?: (item: Item) => void;
+export function MarkdownField({
+  label,
+  name,
+  defaultValue = "",
+  maxLength = 20000,
+  required = false,
+  items = [],
+  open = () => {},
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string;
+  maxLength?: number;
+  required?: boolean;
+  items?: Item[];
+  open?: (item: Item) => void;
 }) {
   const input = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState(defaultValue);
@@ -68,13 +83,29 @@ export function MarkdownField({ label, name, defaultValue = "", maxLength = 2000
     form?.addEventListener("reset", reset);
     return () => form?.removeEventListener("reset", reset);
   }, []);
-  return <div className="project-markdown-field">
-    <label>{label}<textarea ref={input} name={name} defaultValue={defaultValue} maxLength={maxLength} required={required} onChange={event => setText(event.target.value)} /></label>
-    <details onToggle={() => setText(input.current?.value ?? "")}>
-      <summary>Preview {label.toLowerCase()} (Markdown)</summary>
-      <NoteMarkdown text={text || "Nothing to preview yet."} items={items} open={open} />
-    </details>
-  </div>;
+  return (
+    <div className="project-markdown-field">
+      <label>
+        {label}
+        <textarea
+          ref={input}
+          name={name}
+          defaultValue={defaultValue}
+          maxLength={maxLength}
+          required={required}
+          onChange={(event) => setText(event.target.value)}
+        />
+      </label>
+      <details onToggle={() => setText(input.current?.value ?? "")}>
+        <summary>Preview {label.toLowerCase()} (Markdown)</summary>
+        <NoteMarkdown
+          text={text || "Nothing to preview yet."}
+          items={items}
+          open={open}
+        />
+      </details>
+    </div>
+  );
 }
 
 export function NoteEditor({
@@ -544,6 +575,8 @@ export function Relations({
 
 type Geometry = { x: number; y: number; width: number; height: number };
 export function PaperCard({
+  lifecycle,
+  canWrite,
   item,
   items,
   edges,
@@ -575,6 +608,8 @@ export function PaperCard({
   authorName?: string;
   focused: boolean;
   focus: () => void;
+  lifecycle: (item: Item) => void;
+  canWrite: boolean;
 }) {
   const resource = item.kind === "resource",
     area = `projects.card.${item.id}`;
@@ -689,6 +724,9 @@ export function PaperCard({
         >
           ⠿
         </button>
+        {canWrite && editable && (
+          <CardLifecycleButton item={item} onAction={lifecycle} />
+        )}
         <button
           type="button"
           aria-label={`Collapse ${item.kind}`}
@@ -851,6 +889,9 @@ export function PaperCard({
                         data-color={n.data.color}
                         key={n.id}
                       >
+                        {canWrite && (manager || actor === n.author_id) && (
+                          <CardLifecycleButton item={n} onAction={lifecycle} />
+                        )}
                         <button type="button" onClick={() => open(n)}>
                           {n.data.title} ↗
                         </button>
@@ -888,16 +929,6 @@ export function PaperCard({
             <div hidden={section !== "settings"}>
               <ResourceSettings item={item} change={change} onDirty={onDirty} />
               <LocalSSH item={item} />
-              <button
-                type="button"
-                onClick={() =>
-                  void run(() =>
-                    change(item, { archived: !item.data.archived }),
-                  )
-                }
-              >
-                {item.data.archived ? "Restore resource" : "Archive resource"}
-              </button>
             </div>
           </>
         ) : (

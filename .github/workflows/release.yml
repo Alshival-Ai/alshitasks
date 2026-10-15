@@ -37,6 +37,7 @@ jobs:
           npm ci
           python3 scripts/check-workspace-art.py
           node scripts/startup-preference-test.cjs
+          node --test scripts/updates-test.cjs
           uv pip install --python /usr/bin/python3 --target service/_vendor -r service/log-requirements.txt
           uv venv build/log-conformance
           mkdir -p build/cloud-contract-source
@@ -45,14 +46,17 @@ jobs:
           build/log-conformance/bin/python scripts/log-contract-test.py
           npm run validate
           npm run package:deb
+          python3 scripts/package-upgrade-test.py build/alshitasks_*_amd64.deb
           cd build
           sha256sum alshitasks_*_amd64.deb > SHA256SUMS
       - name: Check packaged task board interactions
         if: steps.version.outputs.publish == 'true'
         run: |
           sudo apt-get install -y xvfb x11-utils ./build/alshitasks_*_amd64.deb
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/updates-ui-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/logs-desktop-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/workspace-icons-test.mjs
+          ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a node scripts/card-lifecycle-test.mjs
           ALSHITASKS_TEST_APP=/usr/lib/alshitasks xvfb-run -a -s "-screen 0 1920x1080x24" node scripts/task-board-test.mjs
       - name: Check packaged tray and startup
         timeout-minutes: 5
@@ -67,6 +71,7 @@ jobs:
           path: |
             /tmp/alshitasks-task-board-failure.png
             /tmp/alshitasks-task-board-trace.zip
+            /tmp/alshitasks-card-failure.png
           if-no-files-found: ignore
       - uses: actions/upload-artifact@v4
         if: steps.version.outputs.publish == 'true'
@@ -93,15 +98,25 @@ jobs:
           npm version $env:VERSION --no-git-tag-version --allow-same-version
           npm ci
           python -m pip install -r service/windows-requirements.txt
+          node --test scripts/updates-test.cjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run validate
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run package:windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/package-upgrade-test.py (Get-ChildItem build/windows/*_setup.exe | Select-Object -First 1).FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/windows-desktop-test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:ALSHITASKS_TEST_APP = (Resolve-Path build/windows/win-unpacked/resources/app).Path
           $env:ALSHITASKS_TEST_EXE = (Resolve-Path build/windows/win-unpacked/Alshival.Ai.exe).Path
+          node scripts/updates-ui-test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/logs-desktop-test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/workspace-icons-test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/card-lifecycle-test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:

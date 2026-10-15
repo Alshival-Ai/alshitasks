@@ -146,3 +146,40 @@ creates its own disposable instance and never adopts desktop enrollment.
 The live sync acceptance workspace is **Ketzia's Styling Salon**, with owner
 authorization. Use clearly labeled temporary records and remove only those
 records after testing; do not modify existing customer content.
+
+## UI parity and source upgrades
+
+Desktop and server builds use the same React entry point, workspace sidebar,
+project editors, task menus, note/resource cards, graph, timeline, themes and
+Trash/restore components in `desktop/renderer`. Browser mode only substitutes
+its authenticated HTTP transport, downloads, sign-in and server settings. Native
+window controls, startup integration and installer updates are desktop-only.
+Do not fork the shared workspace components to make browser UI changes.
+
+Until this preview is merged, build from `feat/server-mode`. The branch now
+includes the desktop changes through `f7edc9a`, including note/resource Trash
+buttons, recoverable deletion, task action popovers and the workspace switcher.
+Older server images retain the UI that was bundled when they were built; pulling
+source alone does not update an already running image or process.
+
+For an existing Compose checkout, after taking the backup described above:
+
+```sh
+git fetch origin
+git switch feat/server-mode
+git merge --ff-only origin/feat/server-mode
+docker compose -f compose.server.yml build
+docker compose -f compose.server.yml up -d --no-deps alshitasks
+```
+
+Keep the same Compose project, data volume, master key, published port and base
+URL. Do not use `down -v`. For native installations, stop the server, update the
+same branch, run `npm ci` and `npm run build`, update the server requirements,
+and restart with the existing data directory/key/base URL. Reload browser tabs
+to load the new asset bundle. The server's HTML and API responses use no-store;
+built assets use content hashes.
+
+`node scripts/server-browser-test.mjs` now also exercises shared sidebar geometry,
+task creation and Markdown preview, both themes, narrow navigation/editing, and
+note/resource deletion and restoration with relationships preserved. The test
+creates its own isolated instance; never point it at a user's workspace.

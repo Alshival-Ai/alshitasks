@@ -23,8 +23,10 @@ The matching portal source is maintained separately in the Alshival website repo
 Discovery refreshes workspace access and server capabilities every 30 seconds.
 With `graph-sync-v2`, the desktop consumes consistent, paginated checkpoints and
 incremental differences. SSE change notices wake independent workspace workers;
-polling and bounded backoff recover missed notices and offline periods. Up to four
-workspaces receive SSE simultaneously; additional workspaces retain polling.
+polling and bounded backoff recover missed notices and offline periods. One account SSE connection carries invalidations for every authorized workspace.
+Two graph workers share a fair urgent/reconciliation queue; background HTTP
+concurrency is capped at two. Healthy reconciliation uses 270–300 seconds; missing
+event heartbeats bring it back to 45–55 seconds. Local writes remain urgent.
 No inbound port or webhook is required on the computer. Portal database triggers
 maintain section revisions and an invalidation journal. The portal currently
 projects authorized snapshots to calculate differences; this is not a per-record
@@ -194,3 +196,22 @@ Global pause is retired. Existing paused installations migrate enabled checks an
 destinations to disabled, preserving configuration and queues. A persistent settings message
 explains individual re-enablement. Connected accounts synchronize automatically, including
 managed Ubuntu accounts. Legacy `paused` remains false; API mutations return HTTP 410.
+
+
+## Notification checkpoints and rollout
+
+Servers advertising `notification-sync-v1` provide bounded snapshots and durable
+change cursors. Applying rows/removals and committing the cursor is one transaction.
+Permission resets withhold the old inbox until a complete authorized snapshot is
+available; pending local read/archive actions survive. Notification events trigger
+immediate fetches. Workspace unread badges use the authorized local cache.
+Capabilities refresh at sign-in, reconnect and hourly; discovery follows events and
+five-minute healthy reconciliation. Older servers retain the existing feed path.
+
+The efficiency rollout began with a single-user service override using the existing
+private data directory. On 2026-10-14, after reviewing reduced Pi13 CPU usage and
+healthy pilot synchronization, Samuel authorized public deployment before the
+planned 24-hour observation finished. Monitoring continues; this is not a completed
+24-hour acceptance result. Pushing `main` triggers the Windows and Ubuntu package
+tests and publishes only after both pass. Once the stable package is installed,
+remove the pilot override and restart the installed service, retaining user data.

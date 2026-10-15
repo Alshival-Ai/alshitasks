@@ -301,8 +301,8 @@ export function WorkspaceSwitcher({
         aria-controls="workspace-options"
         onClick={() => setOpen(!open)}
       >
-        {rows.find((w) => w.id === current)?.name || "Workspaces"}{" "}
-        <span aria-hidden="true">⌄</span>
+        <span className="app-workspace-name">{rows.find((w) => w.id === current)?.name || "Workspaces"}</span>
+        <svg className="app-workspace-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
       </button>
       {open && (
         <div id="workspace-options" className="app-workspace-panel">

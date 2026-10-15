@@ -106,9 +106,17 @@ def reconcile(store, transport=None):
         store.set_setting('managed_account', True)
     if not value or value.get('status') != 'ready':
         with store.tx():
+            store.set_setting('managed_generation', None)
             store.set_setting('authorization_generation', store.setting('authorization_generation', 0) + 1)
             store.set_setting('discovery', {'state': (value or {}).get('status', 'unavailable'), 'next': time.time() + 30})
         return
+    with store.lock:
+        current = store.setting('active_account')
+        # Host enrollment is still read and validated every pass. Unchanged local
+        # credentials need no network discovery; accounts.discover owns its cadence.
+        if (current and current['origin'] == ORIGIN and current['id'] == value['account_id']
+                and store.setting('managed_generation') == value['generation']):
+            return
     try:
         capabilities = (transport or remote)(ORIGIN, '/desktop/v1/capabilities', value['token'])
         if capabilities.get('resource') != value['resource'] or str(capabilities.get('account_id')) != value['account_id']:
@@ -136,6 +144,7 @@ def reconcile(store, transport=None):
             else:
                 for item in store.db.execute('SELECT id FROM connections WHERE origin=? AND account=?', (ORIGIN, value['account_id'])).fetchall():
                     store.set_setting('credential:' + item[0], ident)
+            store.set_setting('managed_generation', value['generation'])
             store.set_setting('discovery', {'next': 0})
     except Problem as error:
         with store.tx():

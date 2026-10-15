@@ -199,32 +199,55 @@ export function TaskColumns({
                           <summary
                             aria-label={`Actions for ${item.data.title}`}
                           >
-                            •••
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                              <circle cx="5" cy="12" r="1" />
+                              <circle cx="12" cy="12" r="1" />
+                              <circle cx="19" cy="12" r="1" />
+                            </svg>
                           </summary>
-                          <button
-                            type="button"
-                            className="button btn-frost"
-                            onClick={() =>
-                              void change(item, {
-                                archived: !item.data.archived,
-                              }).catch((error) => report(error.message))
-                            }
-                          >
-                            {item.data.archived
-                              ? "Restore from archive"
-                              : "Archive"}
-                          </button>
-                          <button
-                            type="button"
-                            className="button btn-frost"
-                            onClick={() =>
-                              void change(item, { deleted: true }).catch(
-                                (error) => report(error.message),
-                              )
-                            }
-                          >
-                            Move to Trash
-                          </button>
+                          <div className="sp-task-menu-panel" popover="manual">
+                            <button
+                              type="button"
+                              className="sp-task-action"
+                              onClick={() =>
+                                void change(item, {
+                                  archived: !item.data.archived,
+                                }).catch((error) => report(error.message))
+                              }
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect
+                                  x="3"
+                                  y="3"
+                                  width="18"
+                                  height="5"
+                                  rx="1.5"
+                                />
+                                <path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8M10 12h4" />
+                              </svg>
+                              {item.data.archived
+                                ? "Restore from archive"
+                                : "Archive"}
+                            </button>
+                            <div
+                              className="sp-task-menu-separator"
+                              role="separator"
+                            />
+                            <button
+                              type="button"
+                              className="sp-task-action sp-task-action-danger"
+                              onClick={() =>
+                                void change(item, { deleted: true }).catch(
+                                  (error) => report(error.message),
+                                )
+                              }
+                            >
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M3 6h18M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M5 6l1 14a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1l1-14M10 10v7M14 10v7" />
+                              </svg>
+                              Move to Trash
+                            </button>
+                          </div>
                         </details>
                       )}
                       <TypeIcon

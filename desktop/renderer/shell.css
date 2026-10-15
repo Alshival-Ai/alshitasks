@@ -327,3 +327,16 @@ td {
   min-height: 36px;
   color: var(--app-muted);
 }
+
+.workspace-toggle { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.workspace-toggle .app-workspace-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace-toggle .app-workspace-chevron { display: block; width: 18px; height: 18px; flex: 0 0 18px; }
+.workspace-toggle[aria-expanded="true"] .app-workspace-chevron { transform: rotate(180deg); }
+.update-settings { max-width: 640px; }
+.update-settings progress { display: block; width: 100%; margin-block: 12px; }
+.update-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.update-ready { position: fixed; right: 20px; bottom: 20px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--app-paper); box-shadow: 0 4px 24px #0002; z-index: 3000; }
+
+.update-installing { position: fixed; inset: 36px 0 0; z-index: 5000; display: grid; place-items: center; padding: 32px; text-align: center; background: var(--app-paper); color: var(--app-ink); }
+.update-settings > label { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.update-settings input[type="checkbox"] { width: 16px; height: 16px; margin: 0; flex: 0 0 16px; }

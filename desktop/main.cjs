@@ -11,6 +11,7 @@ const {
   protocol,
   net,
   session,
+  powerMonitor,
 } = require("electron");
 const http = require("node:http"),
   path = require("node:path"),
@@ -24,6 +25,7 @@ const platform = require("./platform.cjs");
 const { getStartup, setStartup } = require("./startup.cjs");
 let win, fallback, tray;
 let quitting = false;
+let updates, updateQuitting = false, updateRequest = false, sessionEnding = false;
 let openRequested =
   !process.argv.includes("--start-in-tray") ||
   process.argv.includes("--notification");
@@ -65,6 +67,7 @@ async function createTray() {
       Menu.buildFromTemplate([
         { label: "Open Alshival.Ai", click: showWindow },
         { type: "separator" },
+        { label: "Check for Updates", click: () => { showWindow(); void updates?.check(); win?.webContents.send("tasks:updates-open"); } },
         { label: "Quit desktop app", click: () => app.quit() },
       ]),
     );
@@ -75,10 +78,17 @@ async function createTray() {
     console.warn("Tray unavailable:", error.message);
   }
 }
-app.on("before-quit", () => {
+app.on("before-quit", event => {
+  if (updateRequest && !updateQuitting && !sessionEnding) {event.preventDefault(); return;}
+  if (!updateQuitting && !sessionEnding && updates?.snapshot().phase === "ready") {
+    event.preventDefault();
+    if (!updateRequest) void installUpdate(false, true);
+    return;
+  }
   quitting = true;
 });
 app.on("will-quit", () => {
+  updates?.stop();
   tray?.destroy();
   if (testRoot) fallback?.kill();
 });
@@ -287,6 +297,28 @@ const handle = (name, fn) =>
     trusted(event);
     return fn(...args);
   });
+async function installUpdate(relaunch, onQuit = false) {
+  if (typeof relaunch !== "boolean" || updateRequest || !updates) return false;
+  updateRequest = true;
+  try {
+    if (win && !win.isDestroyed()) {
+      const allowed = await win.webContents.executeJavaScript("window.dispatchEvent(new Event('alshitasks:prepare-update', {cancelable: true}))");
+      if (!allowed) { showWindow(); return false; }
+    }
+    const installed = await updates.install(relaunch);
+    if (installed || onQuit) {
+      updateQuitting = true;
+      if (installed && relaunch && process.platform !== "win32") app.relaunch();
+      // The renderer's draft guard has accepted this exit. Avoid asking twice.
+      quitting = true; win?.destroy(); app.quit();
+    }
+    return installed;
+  } finally {updateRequest = false;}
+}
+handle("tasks:updates-get", () => updates.snapshot());
+handle("tasks:updates-check", () => updates.check());
+handle("tasks:updates-enabled", enabled => updates.setEnabled(enabled));
+handle("tasks:updates-install", relaunch => installUpdate(relaunch));
 handle("tasks:startup-get", () => getStartup());
 handle("tasks:startup-set", (enabled) => setStartup(enabled));
 handle("tasks:notification-initial", () => {
@@ -524,6 +556,26 @@ app
     session.defaultSession.webRequest.onBeforeRequest((details, callback) =>
       callback({ cancel: !details.url.startsWith("alshitasks://app/") }),
     );
+    if (!testRoot && process.platform === 'linux') {
+      let updating; try {updating = JSON.parse(fs.readFileSync('/var/lib/alshitasks-updates/status.json', 'utf8'));} catch {}
+      if (updating?.phase === 'installing' && Number.isInteger(updating.installerPid) && fs.existsSync('/proc/' + updating.installerPid)) {
+        dialog.showErrorBox('Alshival.Ai is updating', 'An update is being installed. Please open the app again when it finishes.');
+        app.quit(); return;
+      }
+    }
+    updates = require('./update-platform.cjs').createUpdates({app, root, testRoot, startService: serviceStart,
+      stopService: async () => {
+        try {await request('/v1/health');} catch {return;}
+        await request('/v1/stop', 'POST');
+        for (let n = 0; n < 300; n++) {
+          try {await request('/v1/health');} catch {return;}
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        throw new Error('The background service is still stopping. Try again shortly.');
+      }
+    });
+    updates.on('change', state => { if (win && !win.isDestroyed()) win.webContents.send('tasks:updates-changed', state); });
+    powerMonitor.on('shutdown', () => {sessionEnding = true;});
     await serviceStart();
     Menu.setApplicationMenu(null);
     await createTray();
@@ -546,11 +598,14 @@ app
         allowRunningInsecureContent: false,
       },
     });
+    for (const name of ["query-session-end", "session-end"]) win.on(name, () => {sessionEnding = true;});
+    await updates.start();
     win.once("ready-to-show", () => {
       if (openRequested || !tray) showWindow();
     });
     let closing = false;
     win.on("close", (event) => {
+      if (updateRequest && !updateQuitting && !sessionEnding) {event.preventDefault(); return;}
       if (quitting || !tray) return;
       event.preventDefault();
       if (closing) return;

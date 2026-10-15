@@ -1,0 +1,8 @@
+[Unit]
+Description=Check locally for an idle, staged AlshiTasks installation
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30s
+[Install]
+WantedBy=timers.target
