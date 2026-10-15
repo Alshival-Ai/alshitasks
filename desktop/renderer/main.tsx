@@ -1,3 +1,4 @@
+import { Team } from "./Team";
 import { useUpdates, UpdateSettings } from "./Updates";
 import {
   WorkspaceDirectory,
@@ -457,10 +458,11 @@ function App() {
             </button>
             <WorkspaceList
               rows={availableWorkspaces}
-              current={tab === "Projects" ? workspace : ""}
+              current={["Projects", "Team"].includes(tab) ? workspace : ""}
               select={changeWorkspace}
             >
-              {tab === "Projects" && multipleBoards && (
+              <button className="wd-directory-link" onClick={() => showTab("Team")} aria-label="Team" title="Team" aria-current={tab === "Team" ? "page" : undefined}><NavIcon name="team" /><span className="nav-label">Team</span></button>
+          {tab === "Projects" && multipleBoards && (
                 <>
                   <nav
                     className="wd-board-children"
@@ -538,7 +540,7 @@ function App() {
           </a>
           <WorkspaceSwitcher
             rows={availableWorkspaces}
-            current={tab === "Projects" ? workspace : ""}
+            current={["Projects", "Team"].includes(tab) ? workspace : ""}
             select={changeWorkspace}
             directory={() => showTab("Workspaces")}
           />
@@ -547,6 +549,7 @@ function App() {
             <button className="button btn-frost" onClick={() => setUpdateDismissed(true)}>Later</button>
           </div>}
           <HeaderMenu label={accountInfo.account ? "Account" : "Settings"}>
+            <button onClick={() => showTab("Team")}>Team</button>
             <button onClick={() => showTab("Settings")}>Device settings</button>
             <button onClick={() => {if (showTab("Settings")) void window.tasks.checkUpdates();}}>Check for Updates</button>
             {accountInfo.account && (
@@ -642,6 +645,7 @@ function App() {
               synchronization is disabled.
             </p>
           )}
+          {tab === "Team" && <Team key={workspace} workspace={workspace} />}
           {tab === "Workspaces" && (
             <WorkspaceDirectory
               rows={availableWorkspaces}
@@ -920,7 +924,7 @@ function App() {
                           Map{" "}
                           {id === "local"
                             ? "Me"
-                            : settings.local_members?.find(
+                            : settings.team_profiles?.find(
                                 (m: any) => m.id === id,
                               )?.name || id}
                           <select
@@ -1070,49 +1074,6 @@ function App() {
                       </button>
                     </p>
                   ))}
-              </section>
-              <section>
-                <h2>Local assignees</h2>
-                <form
-                  onSubmit={(e) => {
-                    const f = data(e);
-                    void work(() =>
-                      api("/v1/settings", "PATCH", {
-                        local_members: [
-                          ...(settings.local_members || []),
-                          {
-                            id: "contact:" + crypto.randomUUID(),
-                            name: f.name,
-                          },
-                        ],
-                      }),
-                    );
-                  }}
-                >
-                  <label>
-                    Name
-                    <input name="name" required maxLength={120} />
-                  </label>
-                  <button>Add local contact</button>
-                </form>
-                {(settings.local_members || []).map((m: any) => (
-                  <p key={m.id}>
-                    {m.name}{" "}
-                    <button
-                      onClick={() =>
-                        void work(() =>
-                          api("/v1/settings", "PATCH", {
-                            local_members: settings.local_members.filter(
-                              (other: any) => other.id !== m.id,
-                            ),
-                          }),
-                        )
-                      }
-                    >
-                      Remove contact
-                    </button>
-                  </p>
-                ))}
               </section>
               <section>
                 <h2>Background service</h2>

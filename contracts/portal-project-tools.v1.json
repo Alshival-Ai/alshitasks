@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.2.0",
   "tools": [
     {
       "name": "project_list",
@@ -49,6 +49,16 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          "assignee": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Filter by the opaque member ID returned by project_members or project_identity."
+          },
+          "reviewer": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Filter by the opaque member ID returned by project_members or project_identity."
           }
         },
         "required": [],
@@ -101,6 +111,62 @@
                     "string",
                     "null"
                   ]
+                },
+                "number": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                },
+                "actor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "has_login": {
+                      "type": "boolean"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "credential_id": {
+                      "type": "string"
+                    },
+                    "issuer_id": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "owner": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "type": "integer"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  }
                 }
               },
               "required": [
@@ -191,6 +257,62 @@
               "string",
               "null"
             ]
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "has_login": {
+                "type": "boolean"
+              },
+              "workspace_id": {
+                "type": "string"
+              },
+              "credential_id": {
+                "type": "string"
+              },
+              "issuer_id": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owner": {
+                "type": "boolean"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -523,6 +645,62 @@
               "string",
               "null"
             ]
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "has_login": {
+                "type": "boolean"
+              },
+              "workspace_id": {
+                "type": "string"
+              },
+              "credential_id": {
+                "type": "string"
+              },
+              "issuer_id": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owner": {
+                "type": "boolean"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -864,6 +1042,62 @@
               "string",
               "null"
             ]
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "has_login": {
+                "type": "boolean"
+              },
+              "workspace_id": {
+                "type": "string"
+              },
+              "credential_id": {
+                "type": "string"
+              },
+              "issuer_id": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owner": {
+                "type": "boolean"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -967,6 +1201,62 @@
               "string",
               "null"
             ]
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "has_login": {
+                "type": "boolean"
+              },
+              "workspace_id": {
+                "type": "string"
+              },
+              "credential_id": {
+                "type": "string"
+              },
+              "issuer_id": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owner": {
+                "type": "boolean"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
           }
         },
         "required": [
@@ -1041,6 +1331,62 @@
                     "string",
                     "null"
                   ]
+                },
+                "number": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                },
+                "actor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "has_login": {
+                      "type": "boolean"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "credential_id": {
+                      "type": "string"
+                    },
+                    "issuer_id": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "owner": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "type": "integer"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  }
                 }
               },
               "required": [
@@ -1095,19 +1441,52 @@
             "type": "array",
             "items": {
               "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "name"
+              ],
               "properties": {
                 "id": {
                   "type": "string"
                 },
                 "name": {
                   "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "active": {
+                  "type": "boolean"
+                },
+                "has_login": {
+                  "type": "boolean"
+                },
+                "workspace_id": {
+                  "type": "string"
+                },
+                "credential_id": {
+                  "type": "string"
+                },
+                "issuer_id": {
+                  "type": "string"
+                },
+                "scopes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "owner": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "type": "integer"
+                },
+                "email": {
+                  "type": "string"
                 }
-              },
-              "required": [
-                "id",
-                "name"
-              ],
-              "additionalProperties": false
+              }
             }
           },
           "next": {
@@ -1429,6 +1808,62 @@
                     "string",
                     "null"
                   ]
+                },
+                "number": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 1
+                },
+                "actor": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "active": {
+                      "type": "boolean"
+                    },
+                    "has_login": {
+                      "type": "boolean"
+                    },
+                    "workspace_id": {
+                      "type": "string"
+                    },
+                    "credential_id": {
+                      "type": "string"
+                    },
+                    "issuer_id": {
+                      "type": "string"
+                    },
+                    "scopes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "owner": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "type": "integer"
+                    },
+                    "email": {
+                      "type": "string"
+                    }
+                  }
                 }
               },
               "required": [
@@ -1849,6 +2284,80 @@
           "labels",
           "revision"
         ]
+      }
+    },
+    {
+      "name": "project_identity",
+      "description": "Identify the current workspace actor and credential. Assignment does not start an external agent.",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Select an authorized workspace for a multi-workspace connection; omit for an instance-local connection."
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": [
+          "actor"
+        ],
+        "properties": {
+          "actor": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "active": {
+                "type": "boolean"
+              },
+              "has_login": {
+                "type": "boolean"
+              },
+              "workspace_id": {
+                "type": "string"
+              },
+              "credential_id": {
+                "type": "string"
+              },
+              "issuer_id": {
+                "type": "string"
+              },
+              "scopes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "owner": {
+                "type": "boolean"
+              },
+              "revision": {
+                "type": "integer"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "additionalProperties": false
       }
     }
   ],

@@ -144,6 +144,8 @@ def encode_data(store, connection, data):
             remote_member = store.setting("member_remote:" + connection + ":" + str(data[field]))
             if not remote_member:
                 raise Problem("Choose a member of this shared workspace", 409)
+            if str(remote_member).startswith('profile:') and 'team-profiles-v1' not in json.loads(connection_row[0]).get('features', []):
+                raise Problem('Portal must support team profiles before syncing this assignment', 409)
             data[field] = remote_member
     if data.get("visibility") == "private":
         data["visibility"] = "internal"

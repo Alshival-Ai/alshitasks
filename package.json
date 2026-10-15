@@ -2,7 +2,7 @@
   "name": "alshitasks",
   "productName": "Alshival.Ai",
   "desktopName": "alshitasks.desktop",
-  "version": "0.1.43",
+  "version": "0.1.44",
   "description": "Local-first Windows and Linux task boards, resources and monitoring",
   "license": "Apache-2.0",
   "type": "module",
