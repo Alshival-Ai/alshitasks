@@ -23,8 +23,8 @@ from .requests import handle
 
 COOKIE = 'alshitasks_session'
 # Keep browser authority explicit. New internal APIs do not become public automatically.
-READ = re.compile(r'/v1/(?:team|identity|health|revision|drafts|conflicts|workspaces|workspaces/icon|projects(?:/[A-Za-z0-9/-]+)?|settings|attachments(?:/[a-f0-9-]+)?|notifications(?:/[A-Za-z0-9/-]+)?|portal/(?:account|connections|workspaces|publish|publish-offer|logs|monitoring)|logs(?:/setup)?|monitoring|forwarding|ssh|service-status)\Z')
-WRITE = re.compile(r'/v1/(?:team|projects(?:/[A-Za-z0-9/-]+)?|workspaces/icon|settings|attachments(?:/[a-f0-9-]+(?:/review)?)?|notifications/(?:actions|refresh)|portal/(?:signout|retry|select|publish|publish-offer)|drafts/resubmit|conflicts/resolve|secret|monitoring(?:/(?:checks|actions))?|forwarding|ssh)\Z')
+READ = re.compile(r'/v1/(?:webhooks(?:/[A-Za-z0-9/-]+)?|team|identity|health|revision|drafts|conflicts|workspaces|workspaces/icon|projects(?:/[A-Za-z0-9/-]+)?|settings|attachments(?:/[a-f0-9-]+)?|notifications(?:/[A-Za-z0-9/-]+)?|portal/(?:account|connections|workspaces|publish|publish-offer|logs|monitoring)|logs(?:/setup)?|monitoring|forwarding|ssh|service-status)\Z')
+WRITE = re.compile(r'/v1/(?:webhooks(?:/[A-Za-z0-9/-]+)?|team|projects(?:/[A-Za-z0-9/-]+)?|workspaces/icon|settings|attachments(?:/[a-f0-9-]+(?:/review)?)?|notifications/(?:actions|refresh)|portal/(?:signout|retry|select|publish|publish-offer)|drafts/resubmit|conflicts/resolve|secret|monitoring(?:/(?:checks|actions))?|forwarding|ssh)\Z')
 
 
 def base_url(value):

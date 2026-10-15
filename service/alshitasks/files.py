@@ -178,6 +178,10 @@ def restore(paths, path):
                 db.execute("UPDATE connections SET state='disconnected'")
                 db.execute("DELETE FROM monitors")
                 tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                for local_table in ("webhook_deliveries", "webhooks", "webhook_task_state"):
+                    if local_table in tables:
+                        db.execute("DELETE FROM " + local_table)
+                db.execute("DELETE FROM settings WHERE key='webhook_instance_id'")
                 if "health_checks" in tables:
                     db.execute("UPDATE health_checks SET enabled=0,lease=NULL,lease_until=0")
                 if "app_notifications" in tables:

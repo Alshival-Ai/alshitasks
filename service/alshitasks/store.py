@@ -69,6 +69,8 @@ class Store:
             self.migrate_task_numbers()
             from . import team
             team.migrate(self)
+            from . import webhooks
+            webhooks.migrate(self)
             from . import taxonomy
             taxonomy.migrate(self)
             from . import health, notifications
@@ -426,6 +428,8 @@ class Store:
 
             synchronize_mentions(self, self.item(item_id))
             self.event(item_id, "create", data)
+            from .webhooks import changed
+            changed(self, self.item(item_id))
             return self.item(item_id)
 
         return self.replay(body.get("idempotency_key"), body, apply)
@@ -475,6 +479,8 @@ class Store:
 
             synchronize_mentions(self, self.item(item_id))
             self.event(item_id, "update", data)
+            from .webhooks import changed
+            changed(self, self.item(item_id), old)
             return self.item(item_id)
 
         return self.replay(body.get("idempotency_key"), dict(body, item_id=item_id), apply)
