@@ -437,7 +437,12 @@ class Store:
     def update(self, item_id, body):
         def apply():
             old = self.item(item_id)
-            if body.get("revision") != old["revision"]:
+            observed_revision = body.get("revision")
+            # The MCP contract accepts both numeric revisions and opaque strings.
+            # Accept a local revision's canonical string without coercing other tokens.
+            if isinstance(old["revision"], int) and observed_revision == str(old["revision"]):
+                observed_revision = old["revision"]
+            if observed_revision != old["revision"]:
                 raise Problem("Record changed; reload or resolve the conflict", 409)
             patch = body.get("data", {})
             data = dict(old["data"], **patch)
