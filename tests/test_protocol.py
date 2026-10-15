@@ -203,7 +203,8 @@ class Protocol(unittest.TestCase):
                 )
                 self.assertIn("result", results[2])
                 self.assertTrue(results[3]["result"]["isError"])
-                self.assertEqual(results[3]["result"]["structuredContent"]["error"]["status"], 403)
+                self.assertNotIn("structuredContent", results[3]["result"])
+                self.assertEqual(json.loads(results[3]["result"]["content"][0]["text"])["error"]["status"], 403)
                 self.assertEqual(
                     results[4]["result"]["structuredContent"], {"events": [], "next_cursor": None}
                 )
@@ -228,7 +229,8 @@ class Protocol(unittest.TestCase):
                     input=json.dumps(update) + "\n", capture_output=True, text=True, check=True,
                 )
                 self.assertTrue(json.loads(p.stdout)["result"]["isError"])
-                self.assertEqual(json.loads(p.stdout)["result"]["structuredContent"]["error"]["status"], 409)
+                self.assertNotIn("structuredContent", json.loads(p.stdout)["result"])
+                self.assertEqual(json.loads(json.loads(p.stdout)["result"]["content"][0]["text"])["error"]["status"], 409)
                 p = subprocess.run([sys.executable, str(script), "--root", d, "mcp",
                                     "--read-only", "--grant", "fixture"], capture_output=True)
                 self.assertNotEqual(p.returncode, 0)

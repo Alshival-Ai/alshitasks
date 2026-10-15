@@ -145,8 +145,9 @@ def respond(request, call, version, read_only=False):
             code, message = codes[status]
             value = {"error": {"code": code, "message": message, "status": status}}
             response = {"result": {"isError": True,
-                        "content": [{"type": "text", "text": json.dumps(value)}],
-                        "structuredContent": value}}
+                        # Error details are not a successful tool output and must
+                        # not be validated against that tool's outputSchema.
+                        "content": [{"type": "text", "text": json.dumps(value)}]}}
         else:
             response = {"error": {"code": -32602, "message": "Invalid MCP request"}}
         return {"jsonrpc": "2.0", "id": request["id"], **response}
