@@ -196,7 +196,11 @@ class Protocol(unittest.TestCase):
                 self.assertEqual(p.returncode, 0, p.stderr)
                 results = [json.loads(x) for x in p.stdout.splitlines()]
                 self.assertEqual(results[0]["result"]["serverInfo"]["name"], "alshitasks")
-                self.assertEqual(len(results[1]["result"]["tools"]), 19)
+                self.assertEqual(
+                    {tool["name"] for tool in results[1]["result"]["tools"]},
+                    set(tools())
+                    | {"logs_query", "monitoring_status", "notifications_read"},
+                )
                 self.assertIn("result", results[2])
                 self.assertTrue(results[3]["result"]["isError"])
                 self.assertEqual(results[3]["result"]["structuredContent"]["error"]["status"], 403)

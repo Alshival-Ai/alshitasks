@@ -617,6 +617,13 @@ class API:
             return s.list(**args)
         if name == "project_get":
             return s.item(args["id"])
+        if name == "project_task_identifier":
+            item = s.item(args["id"])
+            if item["kind"] != "task":
+                raise Problem("Task required", 422)
+            number = item.get("number")
+            return {"id": item["id"], "number": number,
+                    "ticketId": f"Task #{number}" if number is not None else None}
         if name == "project_create":
             return s.create(args)
         if name == "project_update":

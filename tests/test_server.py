@@ -79,6 +79,21 @@ class ServerTests(unittest.TestCase):
         with hosted:
             self.assertEqual(hosted.get('/', headers={'Host': 'localhost:43120'}).status_code, 403)
 
+    def test_mcp_task_identifier_exposes_number_with_read_access(self):
+        from alshitasks.security import grant_create
+        from alshitasks.mcp_parity import call
+        from alshitasks.store import uid
+        with self.store.tx():
+            task = self.store.create({'idempotency_key': uid(), 'kind': 'task', 'data': {'title': 'Identifier fixture'}})
+            note = self.store.create({'idempotency_key': uid(), 'kind': 'note', 'data': {'title': 'Not a task'}})
+            grant = grant_create(self.store, {'name': 'Identifier reader', 'scopes': ['project:read']})
+        identity = call(self.api, 'project_task_identifier', {'id': task['id']}, token=grant['token'])
+        self.assertEqual(identity, {'id': task['id'], 'number': task['number'], 'ticketId': f"Task #{task['number']}"})
+        with self.assertRaises(Problem):
+            call(self.api, 'project_task_identifier', {'id': note['id']}, token=grant['token'])
+        with self.assertRaises(Problem):
+            call(self.api, 'project_task_identifier', {'id': task['id']}, token='invalid')
+
     def test_reset_expiry_and_rate_limit(self):
         self.login()
         self.auth.password(self.password + 'new')
