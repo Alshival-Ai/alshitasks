@@ -431,7 +431,7 @@ class Portal:
                     "client_id": client["client_id"],
                     "redirect_uri": redirect,
                     "response_type": "code",
-                    "scope": "project:read tasks:write tasks:manage board:write project:write project:comment notes:write resources:read resources:write logs:read notifications:read notifications:write offline_access",
+                    "scope": "team:manage project:read tasks:write tasks:manage board:write project:write project:comment notes:write resources:read resources:write logs:read notifications:read notifications:write offline_access",
                     "resource": origin + "/desktop/v1",
                     "code_challenge": challenge,
                     "code_challenge_method": "S256",

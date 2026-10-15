@@ -2,7 +2,7 @@ import json
 from urllib.parse import urlsplit, parse_qs
 from .store import Problem, now, uid
 from .security import authorize, grant_create
-from . import files, monitoring, ssh
+from . import files, monitoring, ssh, team
 from pathlib import Path
 from .platform_support import mcp_command
 
@@ -119,7 +119,6 @@ class API:
             from .team import actor
             return {"actor": actor()}
         if path == "/v1/team" or path.startswith("/v1/team/"):
-            from . import team
             if not owner:
                 raise Problem("Only the workspace owner manages profiles and credentials", 403)
             if s.workspace not in (None, team.LOCAL):
@@ -208,7 +207,7 @@ class API:
             if suffix == "/members":
                 return {
                     "members": [dict(m, display_name=m.get("name", "Member")) for m in self.members()],
-                    "actor": __import__("alshitasks.team", fromlist=["actor"]).actor(),
+                    "actor": team.actor(),
                     "next": None,
                 }
             if suffix == "/statuses":
@@ -342,7 +341,7 @@ class API:
                 return {
                     "portal_url": team_portal_url(),
                     "local_members": s.setting("local_members", []),
-                    "team_profiles": __import__("alshitasks.team", fromlist=["members"]).members(s),
+                    "team_profiles": team.members(s),
                     "mcp_config": {"mcpServers": {"alshitasks": mcp_command()}},
                     "paused": False,
                     "pause_migration": s.setting("pause_migration"),
@@ -389,7 +388,6 @@ class API:
                 ):
                     raise Problem("Use a port in 1024..65535")
                 if "local_members" in body:
-                    from . import team
                     existing = {m['id']: m for m in team.members(s)}
                     incoming = {m['id']: m for m in body['local_members']}
                     for ident, old in existing.items():

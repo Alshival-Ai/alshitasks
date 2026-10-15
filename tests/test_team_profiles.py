@@ -70,7 +70,8 @@ class TeamProfiles(unittest.TestCase):
 
     def test_review_cannot_be_bypassed_by_status_or_assignment(self):
         item = self.invoke('project_create', kind='task', data={'title': 'Review', 'assignee': self.droid['id'], 'reviewer': self.reviewer['id'], 'state': 'review'})
-        for data in ({'state': 'done'}, {'state': 'done', 'reviewer': None}):
+        done = next(s for s in self.store.statuses() if s['category'] == 'done')
+        for data in ({'state': 'done'}, {'state': 'done', 'reviewer': None}, {'status_id': done['id']}):
             with self.assertRaises(Problem):
                 self.invoke('project_update', id=item['id'], revision=item['revision'], data=data)
         approved = self.invoke('project_action', self.review_key, id=item['id'], revision=item['revision'], action='approve')

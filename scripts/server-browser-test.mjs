@@ -1,4 +1,4 @@
-import { verifyServerUI } from "./server-ui-parity.mjs";
+import { verifyServerUI, verifyTeamUI } from "./server-ui-parity.mjs";
 import { chromium, expect } from "@playwright/test";
 import { spawn, execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, mkdir } from "node:fs/promises";
@@ -49,6 +49,7 @@ try {
   await expect(page.locator(".project-columns-adapter")).toBeVisible({timeout:20000});
   await expect(page.getByRole("button", {name:"Close window"})).toBeHidden();
   await verifyServerUI(page);
+  await verifyTeamUI(page);
   const created = await page.evaluate(async () => {
     const item = await window.tasks.request('/v1/projects/items', 'POST', {idempotency_key: crypto.randomUUID(),kind:'task',data:{title:'Browser acceptance task'}});
     const key = await window.tasks.request('/v1/agent-grants','POST',{name:'Acceptance agent',scopes:['project:read','project:write']});

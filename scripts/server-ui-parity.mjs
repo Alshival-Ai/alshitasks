@@ -86,3 +86,31 @@ export async function verifyServerUI(page) {
   assert.equal(await page.getByRole('button',{name:'Check for Updates',exact:true}).count(),0);
   console.log('Shared sidebar, task editor, themes, mobile layout and note/resource delete/restore passed.');
 }
+
+export async function verifyTeamUI(page) {
+  const sidebar = page.locator('.app-sidebar');
+  await sidebar.getByRole('button', {name:'Team', exact:true}).click();
+  const team = page.getByRole('region', {name:'Team', exact:true});
+  await expect(team).toBeVisible();
+  await team.getByRole('button', {name:'Create profile', exact:true}).click();
+  const editor = team.locator('.team-editor');
+  await editor.getByLabel('Name', {exact:true}).fill('Build droid');
+  await editor.locator('select[name=kind]').selectOption('droid');
+  await editor.getByRole('button', {name:'Create profile',exact:true}).click();
+  await expect(team.locator('.team-card').filter({hasText:'Build droid'})).toBeVisible();
+  await expect(editor.getByLabel('Name', {exact:true})).toHaveValue('Build droid');
+  for(const theme of ['Light','Dark']) {
+    await page.getByRole('radio',{name:theme,exact:true}).click();
+    await page.screenshot({animations:'disabled',path:`build/team-${theme.toLowerCase()}.png`});
+  }
+  await page.setViewportSize({width:390,height:844});
+  await expect(editor).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({animations:'disabled',path:'build/team-mobile.png'});
+  await page.setViewportSize({width:1440,height:1000});
+  await editor.getByLabel('Active',{exact:true}).uncheck();
+  await editor.getByRole('button',{name:'Save profile',exact:true}).click();
+  await expect(team.locator('.team-card').filter({hasText:'Build droid'})).toContainText('Inactive');
+  await page.getByRole('radio',{name:'Light',exact:true}).click();
+  await sidebar.getByRole('button',{name:'Local workspace',exact:true}).click();
+}
