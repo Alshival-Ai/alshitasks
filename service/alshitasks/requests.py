@@ -27,6 +27,22 @@ def handle(api, path, method, body, owner, token):
         ident = uid()
         Secrets().put(ident, body['value'])
         return {'id': ident}
+    if route == '/v1/team' and owner and query.get('workspace_id') not in (None, '00000000-0000-4000-8000-000000000001'):
+        from .workspaces import connection_id
+        with store.lock:
+            ident = connection_id(store, query['workspace_id'])
+            connection = Portal(store).connection(ident)
+            if 'team-profiles-v1' not in __import__('json').loads(connection['capabilities']).get('features', []):
+                raise Problem('This portal needs an update before it can manage profiles', 409)
+            send, check = guarded_transport(store, connection, remote)
+        credential = Portal(store).token(connection)
+        result = send(connection['origin'], '/desktop/v1/workspaces/' + connection['workspace'] + '/team', credential,
+                      **({'body': body} if method != 'GET' else {}))
+        with store.tx():
+            check()
+            if method != 'GET':
+                store.sync_wake.set()
+        return result
     if route == '/v1/agent-grants' and method == 'POST' and owner:
         from .platform_support import mcp_command
         with store.tx():

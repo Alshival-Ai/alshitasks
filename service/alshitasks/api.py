@@ -37,10 +37,11 @@ class API:
 
     def members(self):
         from .workspaces import LOCAL
+        from .team import members
 
         selected = self.store.workspace
         result = (
-            ([{"id": "local", "name": "Me"}] + self.store.setting("local_members", []))
+            ([{"id": "local", "name": "Me"}] + members(self.store))
             if selected in (None, LOCAL)
             else []
         )
@@ -48,7 +49,7 @@ class API:
             if selected is not None and selected != row["id"]:
                 continue
             result.extend(
-                {"id": m["id"], "name": m.get("name", "Member")}
+                dict(m, name=m.get("name", "Member"))
                 for m in self.store.setting("members:" + row["id"], [])
             )
         return result
@@ -60,6 +61,12 @@ class API:
         return row[0] if row else (self.store.setting("remote_edge:" + ident, {}).get("created_at") or now())
 
     def dispatch(self, path, method="GET", body=None, owner=False, token="", proof=None):
+        from .team import principal
+        workspace = parse_qs(urlsplit(path).query).get("workspace_id", [None])[-1]
+        with principal(self.store, owner, token, workspace):
+            return self._dispatch_scoped(path, method, body, owner, token, proof)
+
+    def _dispatch_scoped(self, path, method="GET", body=None, owner=False, token="", proof=None):
         from .cloud_logs import ROUTE, dispatch as cloud_dispatch
 
         if ROUTE.fullmatch(urlsplit(path).path):
@@ -105,6 +112,31 @@ class API:
             grant = authorize(s, token, scope, resource)
             if grant["resource_id"] and path not in ("/v1/logs", "/v1/monitoring", "/v1/heartbeat"):
                 raise Problem("Resource grant cannot access project records", 403)
+        from .team import actor as current_actor
+        if current_actor().get('workspace_id') and not (path.startswith('/v1/projects') or path in ('/v1/identity', '/v1/workspaces', '/v1/health', '/v1/logs', '/v1/monitoring', '/v1/heartbeat')):
+            raise Problem('This credential only accesses local workspace work', 403)
+        if path == "/v1/identity":
+            from .team import actor
+            return {"actor": actor()}
+        if path == "/v1/team" or path.startswith("/v1/team/"):
+            from . import team
+            if not owner:
+                raise Problem("Only the workspace owner manages profiles and credentials", 403)
+            if s.workspace not in (None, team.LOCAL):
+                raise Problem("Manage connected workspace profiles in its portal", 409)
+            parts = path.strip('/').split('/')
+            if len(parts) == 2 and method == "GET":
+                keys = [dict(r, scopes=json.loads(r['scopes'])) for r in s.db.execute(
+                    "SELECT g.id,g.name,g.scopes,g.revoked_at,p.profile_id,p.expires_at FROM grants g JOIN profile_grants p ON p.grant_id=g.id")]
+                return {"members": team.members(s), "credentials": keys}
+            if len(parts) == 2 and method == "POST":
+                values = dict(body)
+                values.pop('action', None)
+                ident = values.pop('id', None)
+                return team.save(s, values, ident)
+            if len(parts) == 3 and method == "PATCH":
+                return team.save(s, body, parts[2])
+            raise Problem("Unknown team operation", 404)
         if path == "/v1/projects/taxonomy/review" and method == "POST":
             from .taxonomy import review
 
@@ -121,7 +153,8 @@ class API:
         if path == "/v1/workspaces":
             from .workspaces import catalog
 
-            return {"workspaces": catalog(s)}
+            from .team import actor
+            return {"workspaces": [w for w in catalog(s) if not actor().get("workspace_id") or w["id"] == actor()["workspace_id"]]}
         if path == "/v1/revision" and owner:
             return {"revision": s.db.total_changes}
         if path == "/v1/health":
@@ -136,6 +169,7 @@ class API:
                         q.get("after", ""),
                         q.get("kind"),
                         int(q.get("limit", 100)),
+                        assignee=q.get("assignee"), reviewer=q.get("reviewer"),
                         type_ids=[v for v in q.get("type_ids", "").split(",") if v],
                         label_ids=[v for v in q.get("label_ids", "").split(",") if v],
                     )
@@ -156,7 +190,7 @@ class API:
                         "events": [
                             dict(r)
                             for r in s.db.execute(
-                                "SELECT sequence,operation,created_at FROM events WHERE item_id=? ORDER BY sequence",
+                                "SELECT e.sequence,e.operation,e.created_at,a.actor FROM events e LEFT JOIN event_actors a ON a.sequence=e.sequence WHERE item_id=? ORDER BY e.sequence",
                                 (ident,),
                             )
                         ]
@@ -174,7 +208,7 @@ class API:
             if suffix == "/members":
                 return {
                     "members": [dict(m, display_name=m.get("name", "Member")) for m in self.members()],
-                    "actor": {"id": "local"},
+                    "actor": __import__("alshitasks.team", fromlist=["actor"]).actor(),
                     "next": None,
                 }
             if suffix == "/statuses":
@@ -308,6 +342,7 @@ class API:
                 return {
                     "portal_url": team_portal_url(),
                     "local_members": s.setting("local_members", []),
+                    "team_profiles": __import__("alshitasks.team", fromlist=["members"]).members(s),
                     "mcp_config": {"mcpServers": {"alshitasks": mcp_command()}},
                     "paused": False,
                     "pause_migration": s.setting("pause_migration"),
@@ -320,6 +355,8 @@ class API:
                     "stopping": self.stopping,
                 }
             if method == "PATCH":
+                if not owner:
+                    raise Problem("Only the workspace owner manages settings", 403)
                 if "paused" in body:
                     raise Problem("Global pause has been retired. Disable individual monitoring checks or forwarding destinations, disconnect your portal account, or stop the service.", 410)
                 if set(body) - {"paused", "retention", "http_port", "local_members", "notification_toasts"}:
@@ -351,6 +388,16 @@ class API:
                     and (not isinstance(body["http_port"], int) or not 1024 <= body["http_port"] <= 65535)
                 ):
                     raise Problem("Use a port in 1024..65535")
+                if "local_members" in body:
+                    from . import team
+                    existing = {m['id']: m for m in team.members(s)}
+                    incoming = {m['id']: m for m in body['local_members']}
+                    for ident, old in existing.items():
+                        if ident.startswith('contact:'):
+                            team.save(s, {'name': incoming.get(ident, old)['name'], 'active': ident in incoming, 'revision': old['revision']}, ident)
+                    for ident, member in incoming.items():
+                        if ident not in existing:
+                            s.db.execute("INSERT INTO team_profiles(id,name,kind) VALUES(?,?,'person')", (ident, member['name']))
                 for k, v in body.items():
                     s.set_setting(k, v)
                 return {"saved": True, "restart_required": "http_port" in body}
@@ -604,7 +651,8 @@ class API:
         from .contract import validate
 
         validate(name, args)
-        with scope(self.store, args.get("workspace_id")):
+        from .team import principal
+        with principal(self.store, owner, token, args.get("workspace_id")):
             return self._execute_tool(name, args, owner, token)
 
     def _execute_tool(self, name, args, owner=False, token=""):
@@ -619,8 +667,12 @@ class API:
         if name == "workspace_list":
             from .workspaces import catalog
 
-            return {"workspaces": catalog(self.store)}
+            from .team import actor
+            return {"workspaces": [w for w in catalog(self.store) if not actor().get("workspace_id") or w["id"] == actor()["workspace_id"]]}
         s = self.store
+        if name == "project_identity":
+            from .team import actor
+            return {"actor": actor()}
         if name == "project_list":
             return s.list(**args)
         if name == "project_get":

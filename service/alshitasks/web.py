@@ -23,8 +23,8 @@ from .requests import handle
 
 COOKIE = 'alshitasks_session'
 # Keep browser authority explicit. New internal APIs do not become public automatically.
-READ = re.compile(r'/v1/(?:health|revision|drafts|conflicts|workspaces|workspaces/icon|projects(?:/[A-Za-z0-9/-]+)?|settings|attachments(?:/[a-f0-9-]+)?|notifications(?:/[A-Za-z0-9/-]+)?|portal/(?:account|connections|workspaces|publish|publish-offer|logs|monitoring)|logs(?:/setup)?|monitoring|forwarding|ssh|service-status)\Z')
-WRITE = re.compile(r'/v1/(?:projects(?:/[A-Za-z0-9/-]+)?|workspaces/icon|settings|attachments(?:/[a-f0-9-]+(?:/review)?)?|notifications/(?:actions|refresh)|portal/(?:signout|retry|select|publish|publish-offer)|drafts/resubmit|conflicts/resolve|secret|monitoring(?:/(?:checks|actions))?|forwarding|ssh)\Z')
+READ = re.compile(r'/v1/(?:team|identity|health|revision|drafts|conflicts|workspaces|workspaces/icon|projects(?:/[A-Za-z0-9/-]+)?|settings|attachments(?:/[a-f0-9-]+)?|notifications(?:/[A-Za-z0-9/-]+)?|portal/(?:account|connections|workspaces|publish|publish-offer|logs|monitoring)|logs(?:/setup)?|monitoring|forwarding|ssh|service-status)\Z')
+WRITE = re.compile(r'/v1/(?:team|projects(?:/[A-Za-z0-9/-]+)?|workspaces/icon|settings|attachments(?:/[a-f0-9-]+(?:/review)?)?|notifications/(?:actions|refresh)|portal/(?:signout|retry|select|publish|publish-offer)|drafts/resubmit|conflicts/resolve|secret|monitoring(?:/(?:checks|actions))?|forwarding|ssh)\Z')
 
 
 def base_url(value):
@@ -68,6 +68,10 @@ def create_app(api, origin, assets=None):
         route = request.url.path
         method = request.method
         if getattr(request.state, 'bearer', None):
+            if route == '/v1/identity' or route == '/v1/workspaces' or route.startswith('/v1/projects'):
+                value = await body(request) if method != 'GET' else {}
+                path = route + ('?' + request.url.query if request.url.query else '')
+                return JSONResponse(await run_in_threadpool(handle, api, path, method, value, False, request.state.bearer))
             if route == '/v1/heartbeat' and method == 'POST':
                 value = await body(request)
                 return JSONResponse(await run_in_threadpool(handle, api, route, method, value, False, request.state.bearer))
@@ -167,10 +171,11 @@ def create_app(api, origin, assets=None):
     async def grant(request):
         from .security import grant_create
         data = await body(request)
-        expiry = data.pop('expires_at', None)
+        profile = bool(data.get('profile_id'))
+        expiry = None if profile else data.pop('expires_at', None)
         if expiry is not None and (isinstance(expiry, bool) or not isinstance(expiry, (int, float)) or not time.time() < expiry < time.time() + 3660 * 86400):
             raise Problem('Choose a future token expiry within ten years')
-        if set(data) - {'name', 'scopes', 'resource_id'}:
+        if set(data) - ({'name', 'scopes', 'resource_id', 'profile_id', 'expires_at'} if profile else {'name', 'scopes', 'resource_id'}):
             raise Problem('Unknown token setting')
         def make():
             with api.store.tx():
@@ -266,7 +271,7 @@ def create_app(api, origin, assets=None):
             if request.headers.get('sec-fetch-site') == 'cross-site' and path != '/oauth/callback' and not public_navigation:
                 raise Problem('Cross-site request denied', 403)
             is_public = path in ('/', '/index.html', '/auth/login', '/healthz', '/favicon.ico') or path.startswith('/assets/')
-            if path == '/mcp' or LOG_ROUTE.fullmatch(path) or path == '/v1/heartbeat':
+            if path == '/mcp' or LOG_ROUTE.fullmatch(path) or path == '/v1/heartbeat' or (request.headers.get('authorization') and (path in ('/v1/identity','/v1/workspaces') or path.startswith('/v1/projects'))):
                 from .security import authorize
                 header = request.headers.get('authorization', '')
                 if not header.startswith('Bearer '):

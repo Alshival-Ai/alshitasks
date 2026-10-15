@@ -54,6 +54,7 @@ class Store:
     def __init__(self, paths):
         self.paths = paths
         self.lock = threading.RLock()
+        self._context = threading.local()
         self.workspace = None
         self.sync_lock = threading.Lock()
         self.token_lock = threading.RLock()
@@ -66,6 +67,8 @@ class Store:
         try:
             self.migrate()
             self.migrate_task_numbers()
+            from . import team
+            team.migrate(self)
             from . import taxonomy
             taxonomy.migrate(self)
             from . import health, notifications
@@ -100,6 +103,14 @@ class Store:
             self.db.close()
             raise
         os.chmod(paths.data / "projects.sqlite", 0o600)
+
+    @property
+    def workspace(self):
+        return getattr(self._context, "workspace", None)
+
+    @workspace.setter
+    def workspace(self, value):
+        self._context.workspace = value
 
     def migrate(self):
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
@@ -192,6 +203,13 @@ class Store:
             k: (json.loads(row[k]) if k == "data" else row[k])
             for k in ("id", "kind", "revision", "data", "author_id", "created_at", "updated_at")
         }
+        recorded = self.db.execute("SELECT a.actor FROM event_actors a JOIN events e ON e.sequence=a.sequence WHERE e.item_id=? AND e.operation='create' ORDER BY e.sequence LIMIT 1", (row['id'],)).fetchone()
+        if recorded:
+            result['actor'] = json.loads(recorded[0])
+        elif row['connection']:
+            remote = self.setting('latest_remote:' + row['id']) or self.setting('remote_base:' + row['id']) or {}
+            if remote.get('actor'):
+                result['actor'] = remote['actor']
         if row["kind"] == "task":
             if row["connection"]:
                 remote = self.setting("latest_remote:" + row["id"]) or {}
@@ -208,7 +226,7 @@ class Store:
         require_item(self, item_id)
         return self.row(self.db.execute("SELECT * FROM items WHERE id=?", (item_id,)).fetchone())
 
-    def list(self, after="", kind=None, limit=100, board=None, type_ids=None, label_ids=None, canonical_ids=False):
+    def list(self, after="", kind=None, limit=100, board=None, type_ids=None, label_ids=None, canonical_ids=False, assignee=None, reviewer=None):
         if not isinstance(limit, int) or not 1 <= limit <= 100:
             raise Problem("limit must be 1..100")
         from .workspaces import LOCAL
@@ -225,8 +243,10 @@ class Store:
             "AND (? IS NULL OR json_extract(data,'$.board_id')=?) "
             "AND (?=0 OR (kind='task' AND json_extract(data,'$.type_id') IN (SELECT value FROM json_each(?)))) "
             "AND (?=0 OR (kind='task' AND EXISTS (SELECT 1 FROM json_each(json_extract(data,'$.label_ids')) labels WHERE labels.value IN (SELECT value FROM json_each(?))))) "
+            "AND (? IS NULL OR json_extract(data,'$.assignee')=?) "
+            "AND (? IS NULL OR json_extract(data,'$.reviewer')=?) "
             f"ORDER BY {sort_id} LIMIT ?",
-            (after, kind, kind, workspace, workspace, LOCAL, workspace, board, board, len(type_ids), json.dumps(type_ids), len(label_ids), json.dumps(label_ids), limit + 1),
+            (after, kind, kind, workspace, workspace, LOCAL, workspace, board, board, len(type_ids), json.dumps(type_ids), len(label_ids), json.dumps(label_ids), assignee, assignee, reviewer, reviewer, limit + 1),
         ).fetchall()
         return dict(
             items=[self.row(r) for r in rows[:limit]],
@@ -304,6 +324,9 @@ class Store:
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         if self.workspace:
             key = self.workspace + ":" + key
+        from .team import actor
+        if actor().get("credential_id"):
+            key = actor()["id"] + ":" + key
         row = self.db.execute("SELECT * FROM replay WHERE key=?", (key,)).fetchone()
         if row:
             if row["digest"] != digest:
@@ -331,6 +354,10 @@ class Store:
             (item_id, operation, now(), json.dumps(data)),
         )
 
+        from .team import actor
+        if self.db.execute("SELECT 1 FROM sqlite_master WHERE name='event_actors'").fetchone():
+            self.db.execute("INSERT INTO event_actors VALUES(last_insert_rowid(),?)", (json.dumps(actor()),))
+
     def create(self, body):
         def apply():
             item_id = body.get("id") or uid()
@@ -348,12 +375,16 @@ class Store:
                 and self.setting("publishing:" + LOCAL)
             ):
                 raise Problem("Local workspace publication is in progress", 409)
+            from .team import actor, validate_assignment
+            validate_assignment(self, data)
+            if actor().get('workspace_id') and data.get('reviewer') and data.get('state') == 'done':
+                raise Problem('Create reviewed work before requesting approval', 403)
             self.validate(kind, data, item_id)
             stamp = now()
             try:
                 self.db.execute(
                     "INSERT INTO items VALUES(?,?,?,?,?,?,?,?,?)",
-                    (item_id, kind, 1, json.dumps(data), "local", stamp, stamp, None, None),
+                    (item_id, kind, 1, json.dumps(data), actor()["id"], stamp, stamp, None, None),
                 )
             except sqlite3.IntegrityError:
                 raise Problem("Identity already exists", 409)
@@ -418,6 +449,9 @@ class Store:
                     None,
                 )
                 data["status_id"] = status["id"] if status else None
+            from .team import validate_assignment, validate_review
+            validate_assignment(self, data, old["data"])
+            validate_review(old["data"], data)
             self.validate(old["kind"], data, item_id)
             if old["data"].get("deleted") and not (body.get("restoring") or patch == {"deleted": False}):
                 raise Problem("Restore the record before editing", 409)

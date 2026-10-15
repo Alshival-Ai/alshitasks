@@ -42,6 +42,12 @@ class Ids:
 
 
 def call(api, name, args, owner=False, token=''):
+    from .team import principal
+    with principal(api.store, owner, token, args.get('workspace_id')):
+        return _call(api, name, args, owner, token)
+
+
+def _call(api, name, args, owner=False, token=''):
     from .contract import validate
     from .security import authorize
     from .workspaces import catalog
@@ -52,7 +58,7 @@ def call(api, name, args, owner=False, token=''):
             workspace.pop('connection_id', None)
         return result
     # An unqualified local call must not aggregate or mutate unrelated shared workspaces.
-    if not args.get('workspace_id') and any(not w.get('local') for w in catalog(api.store)):
+    if not args.get('workspace_id') and api.store.workspace is None and any(not w.get('local') for w in catalog(api.store)):
         raise Problem('Select workspace_id from workspace_list', 422)
     with scope(api.store, args.get('workspace_id')):
         ids = Ids(api.store, api.store.workspace)

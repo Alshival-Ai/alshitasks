@@ -125,6 +125,27 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.patch('/v1/settings', json={'http_port': 8888}, headers=headers).status_code, 403)
         self.assertEqual(self.client.post('/v1/ssh', json={'identity_file': '/etc/passwd'}, headers=headers).status_code, 400)
 
+    def test_team_profiles_browser_and_bearer_mcp(self):
+        headers = self.login()
+        response = self.client.post('/v1/team', json={'action':'save','name':'Local droid','kind':'droid'}, headers=headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        profile = response.json()
+        response = self.client.post('/v1/agent-grants', json={'name':'Droid credential','profile_id':profile['id'],'scopes':['project:read','project:write'],'expires_at':'2099-01-01T00:00:00+00:00'}, headers=headers)
+        self.assertEqual(response.status_code, 200, response.text)
+        grant = response.json()
+        identity = self.mcp(grant, 'tools/call', {'name':'project_identity','arguments':{}}).json()['result']['structuredContent']['actor']
+        self.assertEqual(identity['id'], profile['id'])
+        bearer = {'Authorization':'Bearer '+grant['token']}
+        created = self.client.post('/v1/projects/items', headers=bearer, json={'kind':'task','idempotency_key':'profile-http','data':{'title':'Droid task','assignee':profile['id']}})
+        self.assertEqual(created.status_code, 200, created.text)
+        self.assertEqual(created.json()['actor']['id'], profile['id'])
+        denied = self.client.post('/v1/projects/keys', headers=bearer, json={'name':'Escalate','scopes':['project:write']})
+        self.assertEqual(denied.status_code, 403)
+        response = self.client.post('/v1/team', headers=headers, json={'action':'save','id':profile['id'],'revision':profile['revision'],'active':False})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(self.mcp(grant, 'initialize').status_code, 401)
+        self.assertEqual(self.client.get('/v1/identity', headers=bearer).status_code, 401)
+
     def mcp(self, grant, method, params=None):
         return self.client.post('/mcp', json={'jsonrpc':'2.0','id':1,'method':method,'params':params or {}},
             headers={'Authorization':'Bearer '+grant['token'],'Accept':'application/json, text/event-stream'})

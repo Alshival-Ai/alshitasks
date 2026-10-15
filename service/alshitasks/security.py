@@ -12,6 +12,7 @@ SCOPES = {
     "notifications:read",
     "project:read",
     "project:write",
+    "project:approve",
     "logs:read",
     "logs:write",
     "monitor:read",
@@ -101,10 +102,12 @@ def grant_create(store, body):
             resource,
         ),
     )
+    from .team import bind
+    bind(store, ident, body)
     return dict(id=ident, token=token)
 
 
-def authorize(store, token, scope, resource=None):
+def authenticate(store, token):
     digest = hashlib.sha256(token.encode()).hexdigest()
     row = store.db.execute("SELECT * FROM grants WHERE digest=? AND revoked_at IS NULL", (digest,)).fetchone()
     if not row or not hmac.compare_digest(row["digest"], digest):
@@ -113,6 +116,13 @@ def authorize(store, token, scope, resource=None):
     expiry = store.setting('grant_expiry:' + row['id'])
     if expiry is not None and expiry <= time.time():
         raise Problem('Access token expired', 401)
+    from .team import grant_profile
+    grant_profile(store, row)
+    return row
+
+
+def authorize(store, token, scope, resource=None):
+    row = authenticate(store, token)
     if scope not in json.loads(row["scopes"]):
         raise Problem("Grant does not permit this operation", 403)
     if row["resource_id"] and row["resource_id"] != resource:

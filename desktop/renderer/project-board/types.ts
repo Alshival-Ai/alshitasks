@@ -63,7 +63,7 @@ export type Status = {
   retired: boolean;
   replacement_id: string | null;
 };
-export type Member = { id: string; display_name: string };
+export type Member = { id: string; display_name: string; kind?: string; active?: boolean; has_login?: boolean };
 export type Change = (item: Item, data: Partial<ItemData>) => Promise<Item>;
 export const colors = [
   "yellow",
