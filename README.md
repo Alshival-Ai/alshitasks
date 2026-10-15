@@ -94,3 +94,5 @@ For Windows, first install `service/windows-requirements.txt`, then run `npm run
 Release CI builds and tests Windows and Debian packages before publishing. Published versions are immutable and upgrades preserve per-user data. [Source provenance](docs/provenance.json) records shared code origins.
 
 Licensed under [Apache-2.0](LICENSE). Make something useful. Give it a board.
+
+Local task assignment automation: see [webhook setup, signing and delivery](docs/webhooks.md) and the [wiki guide](https://github.com/Alshival-Ai/alshitasks/wiki/Webhooks).
