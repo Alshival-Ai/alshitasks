@@ -4,7 +4,7 @@ Open **Settings → Device settings → Manage people and droids**, then choose 
 
 Assign a profile as the task assignee or reviewer. These must be different identities. In the profile panel, create a credential with the required workspace permissions and optional expiration. Copy the returned MCP setup. Desktop credentials use the operating system credential store; the self-hosted browser returns a Bearer token once. Credentials never synchronize to the portal.
 
-An external agent can call `project_identity`, then `project_list` with `assignee` or `reviewer` set to the returned opaque identity ID. For example, prompt it to read its assigned open tickets, choose an appropriate task, update progress, and submit the result for review. Assignment alone does not launch an agent. Scheduling and process execution remain outside AlshiTasks.
+An external agent can call `project_identity`, then `project_list` with `assignee` or `reviewer` set to the returned opaque identity ID. For example, prompt it to read its assigned open tickets, choose an appropriate task, update progress, and submit the result for review. An enabled [local assignment webhook](webhooks.md) can notify your existing runner when an assignment changes. Scheduling and process execution remain in the receiving application.
 
 Local profile credentials can access all local workspace records allowed by their selected scopes. They cannot access connected portal workspaces or manage profiles, credentials, or device settings. Approval of reviewed work requires the separate assigned reviewer and `project:approve`. Standard read and write permissions remain necessary for their respective operations.
 

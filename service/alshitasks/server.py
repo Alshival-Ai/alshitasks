@@ -210,11 +210,12 @@ def run(root=None, web=None):
         threading.Thread(target=server.serve_forever, daemon=True).start()
     from .sync_worker import graph_loop, file_loop, notification_loop
 
+    from .webhooks import webhook_loop
     from .notifier import inbox_worker
     from .workspace_icons import icon_loop
     from .resource_cache import resource_cache_loop
 
-    for worker in (background, forwarding_loop, retention_loop, graph_loop, file_loop, notification_loop, inbox_worker, icon_loop, resource_cache_loop, credential_cleanup_loop):
+    for worker in (background, webhook_loop, forwarding_loop, retention_loop, graph_loop, file_loop, notification_loop, inbox_worker, icon_loop, resource_cache_loop, credential_cleanup_loop):
         threading.Thread(target=supervise, args=(api, stop, worker), daemon=True, name=worker.__name__).start()
     if web:
         try:

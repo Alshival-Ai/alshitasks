@@ -1,3 +1,4 @@
+import {verifyWebhooksUI} from './webhooks-ui-test.mjs';
 import { verifyServerUI, verifyTeamUI } from "./server-ui-parity.mjs";
 import { chromium, expect } from "@playwright/test";
 import { spawn, execFileSync } from "node:child_process";
@@ -53,6 +54,8 @@ try {
     const { verifyDesktopParity } = await import('./desktop-browser-parity.mjs');
     await verifyDesktopParity(page);
   }
+  await mkdir("build",{recursive:true});
+  await verifyWebhooksUI(page);
   await verifyServerUI(page);
   await verifyTeamUI(page);
   const created = await page.evaluate(async () => {

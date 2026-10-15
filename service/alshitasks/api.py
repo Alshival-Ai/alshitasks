@@ -96,6 +96,9 @@ class API:
             from .mcp_parity import call
 
             return call(self, body.get("name"), body.get("arguments", {}), owner=owner, token=token)
+        if path == "/v1/webhooks" or path.startswith("/v1/webhooks/"):
+            from .webhooks import dispatch
+            return dispatch(s, path, method, body, owner)
         resource = body.get("resource_id") or q.get("resource_id")
         if not owner:
             scope = (
@@ -184,6 +187,18 @@ class API:
                         return s.update(ident, body)
                 if parts[-1] == "actions" and method == "POST":
                     return s.action(ident, body)
+                if parts[-1] == "assignment" and method == "GET":
+                    item = s.item(ident)
+                    connection = s.db.execute("SELECT connection FROM items WHERE id=?", (ident,)).fetchone()[0]
+                    if item["kind"] != "task" or connection:
+                        raise Problem("Assignment state is available for local tasks only", 404)
+                    state = s.db.execute("SELECT revision FROM webhook_task_state WHERE task_id=?", (ident,)).fetchone()
+                    person = s.db.execute("SELECT active FROM team_profiles WHERE id=?", (item["data"].get("assignee"),)).fetchone()
+                    return {"instance_id": s.setting("webhook_instance_id"), "workspace_id": "00000000-0000-4000-8000-000000000001",
+                            "task_id": ident, "board_id": item["data"].get("board_id"), "revision": item["revision"],
+                            "assignment_revision": state[0] if state else item["revision"], "number": item.get("number"),
+                            "assignee_id": item["data"].get("assignee"), "assignee_active": bool(person[0]) if person else True,
+                            "deleted": bool(item["data"].get("deleted"))}
                 if parts[-1] == "history":
                     return {
                         "events": [

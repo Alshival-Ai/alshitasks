@@ -1,3 +1,4 @@
+import { Webhooks } from "./Webhooks";
 import { WorkspaceIcon, WorkspaceIconSettings } from "./WorkspaceIcon";
 import { TaxonomySettings } from "./project-board/Taxonomy";
 import { WorkspaceBoards } from "./WorkspaceBoards";
@@ -97,6 +98,7 @@ export function WorkspaceCog({ workspace }: { workspace: Workspace }) {
           )}
           <p>Types and labels are shared by every board in this workspace.</p>
           {open && <TaxonomySettings workspace={workspace.id} />}
+          {open && workspace.local && <Webhooks workspace={workspace.id} />}
           {workspace.settings_url && (
             <p>
               <button
