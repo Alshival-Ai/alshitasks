@@ -244,6 +244,12 @@ def create_app(api, origin, assets=None):
     async def security(request, call_next):
         token = None
         try:
+            # Canonicalize the common local browser alias without trusting it for APIs.
+            if (public.scheme == 'http' and public.hostname == '127.0.0.1'
+                    and request.headers.get('host') == public.netloc.replace('127.0.0.1', 'localhost', 1)
+                    and request.method in ('GET', 'HEAD') and request.url.path in ('/', '/index.html')):
+                return RedirectResponse(origin + request.url.path, status_code=307,
+                                        headers={'Cache-Control': 'no-store'})
             if request.headers.get('host') != public.netloc:
                 raise Problem('Untrusted host', 403)
             supplied_origin = request.headers.get('origin')

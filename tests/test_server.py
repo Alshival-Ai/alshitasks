@@ -63,6 +63,22 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(self.client.post('/auth/logout', headers=headers).status_code, 200)
         self.assertEqual(self.client.get('/auth/session').status_code, 401)
 
+    def test_localhost_browser_alias_redirects_without_trusting_api_requests(self):
+        for path in ('/', '/index.html'):
+            response = self.client.get(path, headers={'Host': 'localhost:43120'}, follow_redirects=False)
+            self.assertEqual(response.status_code, 307)
+            self.assertEqual(response.headers['location'], self.origin + path)
+            self.assertEqual(response.headers['cache-control'], 'no-store')
+        for host in ('evil.example:43120', 'localhost:43121', 'localhost.evil.example:43120'):
+            self.assertEqual(self.client.get('/', headers={'Host': host}).status_code, 403)
+        self.assertEqual(self.client.get('/v1/workspaces', headers={'Host': 'localhost:43120'}).status_code, 403)
+        self.assertEqual(self.client.post('/auth/login', json={'password': self.password},
+                                        headers={'Host': 'localhost:43120', 'Origin': 'http://localhost:43120'}).status_code, 403)
+        self.assertEqual(self.client.post('/mcp', json={}, headers={'Host': 'localhost:43120'}).status_code, 403)
+        hosted = TestClient(create_app(self.api, 'https://tasks.example.com', self.assets), base_url='https://tasks.example.com')
+        with hosted:
+            self.assertEqual(hosted.get('/', headers={'Host': 'localhost:43120'}).status_code, 403)
+
     def test_reset_expiry_and_rate_limit(self):
         self.login()
         self.auth.password(self.password + 'new')
