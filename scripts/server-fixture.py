@@ -20,7 +20,9 @@ Vault(instance, key)
 password = secrets.token_urlsafe(32)
 Auth(Paths(instance)).password(password)
 metadata = root / 'fixture.json'
-metadata.write_text(json.dumps({'password': password, 'root': str(instance), 'key': str(key)}))
+cipher = Fernet(key.read_bytes())
+encrypted_password = cipher.encrypt(password.encode('utf-8')).decode('utf-8')
+metadata.write_text(json.dumps({'password_encrypted': encrypted_password, 'root': str(instance), 'key': str(key)}))
 protect(metadata)
 # Credentials remain in the restricted fixture file; never log them.
 print('Isolated server fixture initialized')
