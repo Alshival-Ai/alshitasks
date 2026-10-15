@@ -30,6 +30,8 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - name: Build and test
         if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           sudo apt-get update
           sudo apt-get install -y python3-jsonschema libsecret-tools
@@ -93,6 +95,7 @@ jobs:
       - name: Build and test Windows
         env:
           VERSION: ${{ needs.linux.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           npm version $env:VERSION --no-git-tag-version --allow-same-version
           npm ci
