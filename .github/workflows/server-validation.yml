@@ -32,6 +32,7 @@ jobs:
       - name: Compare the browser with Electron
         if: runner.os == 'Linux'
         run: |
+          node node_modules/electron/install.js
           sudo apt-get update
           sudo apt-get install -y python3-jsonschema python3-pip libsecret-tools xvfb x11-utils
           vendor_python_version=$(/usr/bin/python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
