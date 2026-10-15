@@ -146,6 +146,7 @@
   min-width: 130px;
 }
 .projects-app .project-item-pane {
+  container: task-editor / inline-size;
   position: absolute;
   inset: 0 0 0 auto;
   width: min(720px, 60%);
@@ -177,6 +178,9 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
+.projects-app .project-item-form > .project-title-field,
+.projects-app .project-item-form > .project-markdown-field,
+.projects-app .project-item-form > .project-editor-actions,
 .projects-app .project-item-form > label:has(textarea),
 .projects-app .project-item-form > fieldset,
 .projects-app .project-item-form > button {
@@ -188,7 +192,8 @@
   margin: 0;
 }
 .projects-app .project-item-form textarea {
-  min-height: 100px;
+  min-height: 128px;
+  resize: vertical;
 }
 .projects-app .project-item-form input[type="checkbox"] {
   width: auto;
@@ -325,9 +330,6 @@
     flex-wrap: wrap;
     gap: 10px;
   }
-  .projects-app .project-item-form {
-    grid-template-columns: 1fr;
-  }
   .projects-app .sp-gantt {
     display: none !important;
   }
@@ -375,4 +377,22 @@
 }
 .projects-app .sp-desktop-timeline .sp-timeline > .sp-empty {
   display: block;
+}
+
+/* Keep the task summary above paired metadata in every host. */
+.projects-app .project-item-form > * { min-width: 0; }
+.projects-app .project-item-form label > :is(input, textarea, select) { margin-top: 0; }
+.projects-app .project-title-field input { font-size: 16px; }
+.projects-app .project-item-form > .taxonomy-label-picker { padding: 0; border: 0; }
+.projects-app .project-item-form > .taxonomy-label-picker legend { padding: 0; margin-bottom: 6px; font-size: 12px; font-weight: 600; }
+.projects-app .project-item-form .taxonomy-label-picker label { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+.projects-app .project-item-form .taxonomy-label-picker label[hidden] { display: none; }
+.projects-app .project-editor-actions { grid-column: 1 / -1; position: sticky; bottom: 0; z-index: 3; display: flex; gap: 10px; margin: 8px -24px -40px; padding: 16px 24px; background: var(--paper); border-top: 1px solid var(--line); }
+.projects-app .project-editor-actions .button { min-height: 40px; }
+.projects-app .project-editor-actions button[type='submit'] { flex: 1; justify-content: center; }
+@container task-editor (max-width: 480px) {
+  .projects-app .project-item-form { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .projects-app .project-editor-actions { margin-inline: -16px; margin-bottom: -32px; padding: 12px 16px; }
 }

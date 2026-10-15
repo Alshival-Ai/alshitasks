@@ -991,11 +991,13 @@ export function ProjectsApp({
                 key={selected ? `${selected.id}:${selected.revision}` : kind}
                 onSubmit={save}
               >
-                <label>
+                <label className="project-title-field">
                   Title
                   <input
                     required
                     name="title"
+                    autoFocus={!selected}
+                    placeholder={kind === "task" ? "What needs to be done?" : undefined}
                     maxLength={200}
                     defaultValue={selected?.data.title ?? ""}
                   />
@@ -1034,13 +1036,6 @@ export function ProjectsApp({
                       ))}
                     </select>
                   </label>
-                )}
-                {kind === "task" && taxonomy.types.length > 0 && (
-                  <TaxonomyFields
-                    catalog={taxonomy}
-                    type={selected?.data.type_id}
-                    labels={selected?.data.label_ids}
-                  />
                 )}
                 <label>
                   Priority
@@ -1087,7 +1082,6 @@ export function ProjectsApp({
                     defaultValue={selected?.data.due_on ?? ""}
                   />
                 </label>
-                <MarkdownField label="Acceptance criteria" name="acceptance" maxLength={6000} defaultValue={selected?.data.acceptance ?? ""} items={items} open={open} />
                 {kind === "task" && (
                   <label>
                     Deliverable
@@ -1106,6 +1100,14 @@ export function ProjectsApp({
                     </select>
                   </label>
                 )}
+                {kind === "task" && taxonomy.types.length > 0 && (
+                  <TaxonomyFields
+                    catalog={taxonomy}
+                    type={selected?.data.type_id}
+                    labels={selected?.data.label_ids}
+                  />
+                )}
+                <MarkdownField label="Acceptance criteria" name="acceptance" maxLength={6000} defaultValue={selected?.data.acceptance ?? ""} items={items} open={open} />
                 {kind === "note" && (
                   <>
                     <label>
@@ -1230,13 +1232,14 @@ export function ProjectsApp({
                     </label>
                   </fieldset>
                 )}
-                <button
-                  className="button btn matrix-btn"
-                  disabled={busy}
-                  type="submit"
-                >
-                  {busy ? "Saving…" : "Save"}
-                </button>
+                <div className="project-editor-actions">
+                  <button className="button btn matrix-btn" disabled={busy} type="submit">
+                    {busy ? "Saving…" : "Save"}
+                  </button>
+                  <button className="button btn-frost" disabled={busy} type="button" onClick={close}>
+                    Cancel
+                  </button>
+                </div>
               </form>
               {selected && (
                 <>
