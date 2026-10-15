@@ -1,3 +1,4 @@
+import { ServerSettings } from "./ServerSettings";
 import { Team } from "./Team";
 import { useUpdates, UpdateSettings } from "./Updates";
 import {
@@ -19,6 +20,7 @@ import "./project-board/portal/workspace-directory.css";
 import { readDeviceState, writeDeviceState } from "./deviceState";
 import { LOCAL_WORKSPACE, selectWorkspace } from "./project-board/api";
 const api = window.tasks.request;
+const browser = window.tasks.platform === "browser";
 const sidebarIcons = new URL("./sidebar-icons.svg?no-inline", import.meta.url)
   .href;
 import "./portal-controls.css";
@@ -551,7 +553,7 @@ function App() {
           <HeaderMenu label={accountInfo.account ? "Account" : "Settings"}>
             <button onClick={() => showTab("Team")}>Team</button>
             <button onClick={() => showTab("Settings")}>Device settings</button>
-            <button onClick={() => {if (showTab("Settings")) void window.tasks.checkUpdates();}}>Check for Updates</button>
+            {!browser && <button onClick={() => {if (showTab("Settings")) void window.tasks.checkUpdates();}}>Check for Updates</button>}
             {accountInfo.account && (
               <button
                 onClick={() =>
@@ -681,8 +683,9 @@ function App() {
           {tab === "Settings" && (
             <>
               <h1>Settings</h1>
-              <UpdateSettings state={updateState} />
-              <section>
+              {browser && <button onClick={() => void api("/auth/logout", "POST").then(() => location.reload())}>Sign out of server</button>}
+              {!browser && <UpdateSettings state={updateState} />}
+              <section className="desktop-only">
                 <h2>Startup</h2>
                 <label>
                   <input
@@ -698,7 +701,7 @@ function App() {
                   your account on this computer.
                 </p>
               </section>
-              <section>
+              <section className="desktop-only">
                 <h2>Notifications</h2>
                 <label>
                   <input
@@ -1024,21 +1027,21 @@ function App() {
           )}
           {tab === "Settings" && (
             <>
-              <section>
+              {browser && <ServerSettings />}
+              <section className="desktop-only">
                 <h2>Integrations · Agent access</h2>
                 <p>
-                  The bundled MCP server works locally without an Alshival.Ai
-                  account.
+                  {browser ? "Connect agents to this server using a scoped access token." : "The bundled MCP server works locally without an Alshival.Ai account."}
                 </p>
                 <pre>{JSON.stringify(settings.mcp_config, null, 2)}</pre>
                 <button
                   onClick={() =>
                     void work(async () => {
                       const result = await api("/v1/agent-grants", "POST", {
-                        name: "Desktop agent",
+                        name: browser ? (window.prompt("Token name", "Remote agent") || "Remote agent") : "Desktop agent",
                         scopes: [
                           "project:read",
-                          "project:write",
+                          ...(!browser ? ["project:write"] : []),
                           "logs:read",
                           "monitor:read",
                           "notifications:read",
@@ -1048,7 +1051,7 @@ function App() {
                     })
                   }
                 >
-                  Create read/write agent grant
+                  {browser ? "Create read-only access token" : "Create read/write agent grant"}
                 </button>
                 {agentConfig && (
                   <textarea
@@ -1075,7 +1078,7 @@ function App() {
                     </p>
                   ))}
               </section>
-              <section>
+              <section className="desktop-only">
                 <h2>Background service</h2>
                 <ServiceStatus />
                 <p>
@@ -1098,7 +1101,7 @@ function App() {
                 <button onClick={() => void work(() => window.tasks.backup())}>
                   Export complete backup
                 </button>
-                <button onClick={() => void work(() => window.tasks.restore())}>
+                <button className="desktop-only" onClick={() => void work(() => window.tasks.restore())}>
                   Restore backup
                 </button>
                 <p>
@@ -1168,17 +1171,17 @@ function App() {
                     const f = data(e);
                     void work(async () => {
                       await api("/v1/settings", "PATCH", {
-                        http_port: f.port ? Number(f.port) : null,
+                        ...(!browser ? {http_port: f.port ? Number(f.port) : null} : {}),
                         retention: {
                           days: Number(f.days),
                           max_bytes: Number(f.mb) * 1024 ** 2,
                         },
                       });
-                      await window.tasks.service("restart");
+                      if (!browser) await window.tasks.service("restart");
                     });
                   }}
                 >
-                  <label>
+                  <label className="desktop-only">
                     Loopback HTTP port (blank disables)
                     <input
                       name="port"
@@ -1210,7 +1213,7 @@ function App() {
                       max="10240"
                     />
                   </label>
-                  <button>Save and restart service</button>
+                  <button>{browser ? "Save retention" : "Save and restart service"}</button>
                 </form>
                 <code>alshitasks mcp</code>
                 <p>

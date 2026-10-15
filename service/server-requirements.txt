@@ -1,0 +1,8 @@
+-r log-requirements.txt
+starlette==1.8.0
+uvicorn==0.54.0
+argon2-cffi==25.1.0
+cryptography==50.0.2
+httpx==0.28.1
+jsonschema==4.26.0
+pywin32==312; sys_platform == 'win32'

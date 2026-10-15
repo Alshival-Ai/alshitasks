@@ -2,6 +2,7 @@ export {};
 declare global {
   interface Window {
     tasks: {
+      platform?: "desktop" | "browser";
       getUpdates: () => Promise<import('./Updates').UpdateState>;
       checkUpdates: () => Promise<import('./Updates').UpdateState>;
       setAutomaticUpdates: (enabled: boolean) => Promise<import('./Updates').UpdateState>;

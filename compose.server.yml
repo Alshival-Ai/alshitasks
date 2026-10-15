@@ -1,0 +1,27 @@
+services:
+  alshitasks:
+    image: ghcr.io/alshival-ai/alshitasks-server:${ALSHITASKS_VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    user: "10001:10001"
+    init: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${ALSHITASKS_PORT:-43120}:43120"
+    volumes:
+      - alshitasks-data:/data
+      - ./server-keys:/run/secrets:ro
+    command: ["server", "--data-dir", "/data", "--key-file", "/run/secrets/master.key", "--host", "0.0.0.0", "--port", "43120", "--base-url", "${ALSHITASKS_BASE_URL:-http://127.0.0.1:43120}"]
+    environment:
+      ALSHITASKS_HEALTH_ORIGIN: "${ALSHITASKS_BASE_URL:-http://127.0.0.1:43120}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request,urllib.parse; origin=os.environ['ALSHITASKS_HEALTH_ORIGIN']; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:43120/healthz',headers={'Host':urllib.parse.urlsplit(origin).netloc}),timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+volumes:
+  alshitasks-data:

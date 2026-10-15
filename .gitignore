@@ -5,6 +5,8 @@ build/
 __pycache__/
 *.pyc
 .venv/
+server-data/
+server-keys/
 .env
 .env.*
 *.db

@@ -105,8 +105,13 @@ def merge(base, local, shared):
     return {**shared, **{k: local.get(k) for k in changed_local}}
 
 
-def encode_data(store, connection, data):
+def encode_data(store, connection, data, kind=None):
     data = {k: v for k, v in data.items() if k not in ("position", "resource_id")}
+    # Visibility is a note/comment field in the portal. The local shared
+    # record defaults also carry it on tasks and boards; do not send that
+    # synthetic field as a request to change their visibility.
+    if kind in ('task', 'board', 'deliverable', 'resource'):
+        data.pop('visibility', None)
     connection_row = store.db.execute("SELECT capabilities FROM connections WHERE id=?", (connection,)).fetchone()
     supports_taxonomy = connection_row and "task-taxonomy-v1" in json.loads(connection_row[0]).get("features", [])
     if not supports_taxonomy:
@@ -261,7 +266,7 @@ class Portal:
             return value["access_token"]
         raise Problem("Portal session renewal is pending; retrying automatically", 503)
 
-    def connect(self, origin):
+    def connect(self, origin, web_redirect=None):
         from . import managed
         from .accounts import ORIGIN
         ident = uid()
@@ -370,7 +375,8 @@ class Portal:
                     finished.set()
 
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Callback)
-        redirect = f"http://127.0.0.1:{server.server_port}/callback"
+        local_callback = f"http://127.0.0.1:{server.server_port}/callback"
+        redirect = web_redirect or local_callback
         deadline = time.time() + 300
         completed = [False]
         finish_lock = threading.Lock()
@@ -381,7 +387,7 @@ class Portal:
                 "/oauth/register/",
                 body={
                     "client_name": "Alshival.Ai",
-                    "application_type": "native",
+                    "application_type": "web" if redirect.startswith('https://') else "native",
                     "redirect_uris": [redirect],
                     "token_endpoint_auth_method": "none",
                     "grant_types": ["authorization_code", "refresh_token"],
@@ -416,6 +422,7 @@ class Portal:
         threading.Thread(target=expire, daemon=True).start()
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip("=")
         return {
+            **({'local_callback': local_callback} if web_redirect else {}),
             "connection": ident,
             "url": origin
             + "/oauth/authorize/?"
@@ -893,8 +900,8 @@ def sync_connection(store, c, transport=remote, token=None):
             shared = remote_by_id.get(remote_id)
             try:
                 if base is not None:
-                    base["data"] = encode_data(store, c["id"], base["data"])
-                local_data = encode_data(store, c["id"], local["data"])
+                    base["data"] = encode_data(store, c["id"], base["data"], local['kind'])
+                local_data = encode_data(store, c["id"], local["data"], local['kind'])
             except Problem:
                 with store.tx():
                     check_authorization()

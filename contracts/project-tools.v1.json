@@ -2384,6 +2384,57 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "name": "project_task_identifier",
+      "description": "Read the immutable human-readable identifier of a task, such as Task #13, without changing the task.",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspace_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Select an authorized workspace; omit for an instance-local connection."
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "ticketId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "ticketId"
+        ],
+        "additionalProperties": false
+      }
     }
   ],
   "errorSchema": {

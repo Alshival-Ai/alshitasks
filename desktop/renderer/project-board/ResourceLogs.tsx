@@ -182,7 +182,7 @@ export function ResourceLogs({ item }: { item: Item }) {
       setBusy(false);
     }
   }
-  const endpoint = `http://127.0.0.1:${setup?.http_port ?? port}`;
+  const endpoint = window.tasks.platform === "browser" ? location.origin : `http://127.0.0.1:${setup?.http_port ?? port}`;
   const example = `read -rs -p 'Sender token: ' ALSHIVAL_LOG_TOKEN; echo\ncurl --fail-with-body '${endpoint}${setup?.logs_path ?? ""}' \\\n  -H "Authorization: Bearer $ALSHIVAL_LOG_TOKEN" \\\n  -H 'Content-Type: application/json' \\\n  --data '${JSON.stringify({ events: [{ severity: "INFO", message: "Worker started", source: "my-app", attributes: {} }] })}'\nunset ALSHIVAL_LOG_TOKEN`;
   const otlpExample = `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=${endpoint}${setup?.otlp_path ?? ""}\nOTEL_EXPORTER_OTLP_LOGS_PROTOCOL=http/protobuf\nOTEL_EXPORTER_OTLP_LOGS_HEADERS=Authorization=Bearer%20<sender-token>`;
   const createToken = async (scope: string) => {
@@ -317,11 +317,11 @@ export function ResourceLogs({ item }: { item: Item }) {
         <details>
           <summary>Send logs here</summary>
           <p>
-            {setup?.http_port
-              ? `Listening address: ${endpoint}${setup.logs_path}`
+            {(setup?.http_port || window.tasks.platform === "browser")
+              ? `Listening address: ${endpoint}${setup?.logs_path ?? ""}`
               : "Enable the loopback HTTP API in Settings → Local API and retention, then restart the service."}
           </p>
-          {!setup?.http_port && (
+          {!setup?.http_port && window.tasks.platform !== "browser" && (
             <div>
               <label>
                 Local HTTP port{" "}

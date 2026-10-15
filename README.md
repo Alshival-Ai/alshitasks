@@ -19,7 +19,9 @@ Give the big idea a board. Give the tiny task a home. Bring your notes, resource
 | **Your server / VM** | Try the [browser/server preview](https://docs.alshival.ai/server-mode/): the same board UI and MCP tools, a separate owner login, and your own storage. |
 | **Hosted team workspace** | Sign in at [alshival.ai](https://alshival.ai/). Collaboration follows your plan and workspace permissions. |
 
-Server mode is currently available from [`feat/server-mode`](https://github.com/Alshival-Ai/alshitasks/tree/feat/server-mode) in [PR #1](https://github.com/Alshival-Ai/alshitasks/pull/1); the v0.1.37 desktop installers do not include this distribution. There is no published macOS desktop installer. Mac users can use the portal or a browser connected to a server instance.
+Server mode is currently available from [`feat/server-mode`](https://github.com/Alshival-Ai/alshitasks/tree/feat/server-mode) in [PR #1](https://github.com/Alshival-Ai/alshitasks/pull/1); desktop installers do not include this distribution. The preview now includes the current desktop sidebar, task editors, note/resource cards and recoverable Trash controls; rebuild older server installations to load them. There is no published macOS desktop installer. Mac users can use the portal or a browser connected to a server instance.
+
+For a server using the default `http://127.0.0.1:43120` origin, opening `http://localhost:43120/` redirects to the configured address before sign-in. API and MCP clients should use the configured base URL directly.
 
 ## A board that keeps the context
 

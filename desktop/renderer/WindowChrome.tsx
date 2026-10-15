@@ -87,7 +87,7 @@ export function WindowChrome({ notifications }: { notifications: ReactNode }) {
         </button>
       </div>
 
-      <div className="window-controls" aria-label="Window controls">
+      <div className="window-controls desktop-only" aria-label="Window controls">
         <button
           aria-label="Minimize window"
           title="Minimize"
@@ -98,7 +98,7 @@ export function WindowChrome({ notifications }: { notifications: ReactNode }) {
           </svg>
         </button>
         <button
-          aria-label={maximized ? "Restore window" : "Maximize window"}
+          className="desktop-only" aria-label={maximized ? "Restore window" : "Maximize window"}
           title={maximized ? "Restore" : "Maximize"}
           onClick={() => void window.tasks.windowAction("maximize")}
         >
