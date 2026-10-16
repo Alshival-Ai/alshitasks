@@ -1,3 +1,4 @@
+import { verifyBoardLayout } from './board-layout-regression.mjs';
 import {verifyWebhooksUI} from './webhooks-ui-test.mjs';
 import { verifyServerUI, verifyTeamUI } from "./server-ui-parity.mjs";
 import { chromium, expect } from "@playwright/test";
@@ -37,7 +38,7 @@ try {
     if (i === 99) throw new Error("Server did not start");
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  browser = await chromium.launch({headless: true, ...(process.env.ALSHITASKS_BROWSER_CHANNEL ? {channel: process.env.ALSHITASKS_BROWSER_CHANNEL} : {})});
+  browser = await chromium.launch({headless: true, ignoreDefaultArgs: ['--hide-scrollbars'], ...(process.env.ALSHITASKS_BROWSER_CHANNEL ? {channel: process.env.ALSHITASKS_BROWSER_CHANNEL} : {})});
   const context = await browser.newContext({viewport: {width:1440,height:1000}, ignoreHTTPSErrors: process.env.ALSHITASKS_TEST_TLS === '1'});
   const page = await context.newPage();
   const errors = []; page.on("pageerror", error => errors.push(error.message));
@@ -49,6 +50,7 @@ try {
   await page.getByRole("button", {name:"Sign in", exact:true}).click();
   await expect(page.locator(".project-columns-adapter")).toBeVisible({timeout:20000});
   await expect(page.getByRole("button", {name:"Close window"})).toBeHidden();
+  if (!remote) await verifyBoardLayout(page);
   if (process.env.ALSHITASKS_COMPARE_DESKTOP === '1') {
     if (remote) throw new Error('Desktop parity requires an isolated local fixture');
     const { verifyDesktopParity } = await import('./desktop-browser-parity.mjs');

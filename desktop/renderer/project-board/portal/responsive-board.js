@@ -235,13 +235,21 @@ window.AlshivalResponsiveBoard = (root, lifecycle, actions) => {
         };
       });
     if (!measurements.length) return 0;
+    const style = getComputedStyle(surface);
+    // A horizontal scrollbar consumes height inside the board. Omitting it
+    // makes the tallest stack overflow, adds a vertical scrollbar and wraps
+    // its cards. The next measurement then removes that scrollbar and wraps
+    // them back, producing a ResizeObserver loop on desktop/tablet browsers.
+    const scrollbar = Math.max(0, surface.offsetHeight - surface.clientHeight
+      - pixels(style.borderTopWidth) - pixels(style.borderBottomWidth));
+    const chrome = blockChrome(surface) + scrollbar;
     const demands = measurements.map(item => item.demand).sort((a, b) => a - b);
     const tallest = demands.at(-1);
-    if (root.hasAttribute('data-board-expanded')) return Math.ceil(tallest + blockChrome(surface));
+    if (root.hasAttribute('data-board-expanded')) return Math.ceil(tallest + chrome);
     // Fit the first three cards, including their actual wrapped content. Short
     // boards retain their natural height; additional cards scroll within columns.
     const columnHeight = Math.min(tallest, Math.max(...measurements.map(item => item.collapsed)));
-    return Math.ceil(columnHeight + blockChrome(surface));
+    return Math.ceil(columnHeight + chrome);
   }
   function measure() {
     frame = 0;
